@@ -3,17 +3,25 @@
 #include "Vector3.h"
 #include "Ray.h"
 #include "HitRecord.h"
+#include "Material.h"
 
 class Sphere : public Hitable
 {
 public:
 	Vector3 center;
 	float radius;
+	Material* mat_ptr;
 
-	Sphere(Vector3 center, float radius)
+	Sphere(Vector3 center, float radius, Material* mat)
 	{
 		this->center = center;
 		this->radius = radius;
+		this->mat_ptr = mat;
+	}
+
+	~Sphere()
+	{
+		delete mat_ptr;
 	}
 
 	bool hit(const Ray& ray, float t_min, float t_max, HitRecord& hit_record) const;
@@ -54,25 +62,27 @@ inline bool Sphere::sphereIntersectionMethod1(const Ray& ray, float t_min, float
 		//Intersection points
 		float t0 = tca - thc;
 		float t1 = tca + thc;
-		if (t0 > 0.005)
+		if (t0 < t_max && t0 > t_min)
 		{
 			hit_record.t = t0;
-			hit_record.position = ray.point_at_parameter(t0);
+			hit_record.position = (ray.origin + t0 * D);
 			hit_record.normal = ((ray.origin + t0 * D) - center).getNormalized();
+			hit_record.mat_ptr = mat_ptr;
+
 			return true;
 		}
 
-		if (t1 > 0.005)
+		if (t1 < t_max && t1 > t_min)
 		{
 			hit_record.t = t1;
 			hit_record.position = (ray.origin + t1 * D);
 			hit_record.normal = ((ray.origin + t1 * D) - center).getNormalized();
+			hit_record.mat_ptr = mat_ptr;
 			return true;
 		}
 	}
 	return false;
 }
-
 
 
 inline bool Sphere::sphereIntersectionMethod2(const Ray& ray, float t_min, float t_max, HitRecord& hit_record) const
@@ -128,6 +138,8 @@ inline bool Sphere::sphereIntersectionMethod2(const Ray& ray, float t_min, float
 			hit_record.t = t0;
 			hit_record.position = ray.point_at_parameter(t0);
 			hit_record.normal = (hit_record.position - center) / radius;
+			hit_record.mat_ptr = mat_ptr;
+
 			return true;
 		}
 
@@ -137,6 +149,8 @@ inline bool Sphere::sphereIntersectionMethod2(const Ray& ray, float t_min, float
 			hit_record.t = t1;
 			hit_record.position = ray.point_at_parameter(t1);
 			hit_record.normal = (hit_record.position - center) / radius;
+			hit_record.mat_ptr = mat_ptr;
+
 			return true;
 		}
 	}

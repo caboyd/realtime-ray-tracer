@@ -4,13 +4,14 @@
 #include "Random.h"
 #include "Sphere.h"
 #include "HitableList.h"
+#include "Material.h"
 
 using std::cout;
 using std::endl;
 
 Uint32 rgba_to_uint32(Uint8 r, Uint8 g, Uint8 b, Uint8 a);
 Uint32 vector3_to_uint32(const Vector3& color, float alpha = 1);
-Vector3 ray_trace(const Ray& ray, Hitable* world);
+Vector3 ray_trace(const Ray& ray, Hitable* world, int depth);
 Vector3 random_in_unit_sphere();
 
 int main(int argc, char** argv)
@@ -39,11 +40,12 @@ int main(int argc, char** argv)
 	Vector3 vert(0, 4, 0);
 	Vector3 origin(0, 0, 0);
 
-	Hitable* list[2];
-	list[0] = new Sphere({0, 0, -1}, 0.5);
-	list[1] = new Sphere({0, -100.5, -1}, 100);
-
-	Hitable* world = new HitableList(list, 2);
+	Hitable* list[4];
+	list[0] = new Sphere({0, 0, -1}, 0.5, new Lambertian({0.8f,0.3f,0.3f}));
+	list[1] = new Sphere({0, -100.5, -1}, 100, new Lambertian({0.8, 0.8, 0.0}));
+	list[2] = new Sphere({1,0, -1}, 0.5, new Metal({0.8, 0.6, 0.2}));
+	list[3] = new Sphere({-1, 0, -1}, 0.5, new Metal({0.8, 0.8, 0.8}));
+	Hitable* world = new HitableList(list, 4);
 
 	for (unsigned int y = 0; y < SCREEN_HEIGHT; y++)
 	{
@@ -57,7 +59,7 @@ int main(int argc, char** argv)
 
 				Ray ray(origin, llc + u * h + v * vert);
 				//Ray ray = camera.getRay(u, v);
-				color += ray_trace(ray, world);
+				color += ray_trace(ray, world, 0);
 			}
 			if (y == 399)
 				int a = 0;
@@ -107,14 +109,24 @@ Uint32 vector3_to_uint32(const Vector3& color, float alpha)
 	return result;
 }
 
-Vector3 ray_trace(const Ray& ray, Hitable* world)
+Vector3 ray_trace(const Ray& ray, Hitable* world, int depth)
 {
 	HitRecord rec;
 
 	if (world->hit(ray, 0.001, FLT_MAX, rec))
 	{
-		Vector3 target = rec.position + rec.normal + random_in_unit_sphere();
-		return 0.5 * ray_trace(Ray(rec.position, target - rec.position), world);
+		Ray ray_out;
+		Vector3 attenuation;
+
+		if( depth < MAX_RAY_DEPTH && rec.mat_ptr->scatter(ray, rec, attenuation, ray_out))
+		{
+			return attenuation * ray_trace(ray_out, world, depth + 1);
+		} else
+		{
+
+
+			return Vector3::ZERO;
+		}
 	}
 	else
 	{
@@ -124,13 +136,4 @@ Vector3 ray_trace(const Ray& ray, Hitable* world)
 	}
 }
 
-Vector3 random_in_unit_sphere()
-{
-	Vector3 p;
-	do
-	{
-		p = Vector3(Random::randf(-1, 1), Random::randf(-1, 1), Random::randf(-1, 1));
-	}
-	while (p.getSquaredLength() >= 1.0);
-	return p;
-}
+

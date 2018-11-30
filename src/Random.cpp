@@ -1,5 +1,6 @@
 #pragma once
 #include "Random.h"
+#include "Vector3.h"
 
 Random::Random()
 {
@@ -37,6 +38,17 @@ float Random::randf(const float min, const float max)
 	const std::uniform_real_distribution<float> distribution(min, max);
 	const float result = distribution(gen);
 	return result;
+}
+
+Vector3 Random::random_in_unit_sphere()
+{
+	Vector3 p;
+	do
+	{
+		p = Vector3(Random::randf(-1, 1), Random::randf(-1, 1), Random::randf(-1, 1));
+	}
+	while (p.getSquaredLength() >= 1.0);
+	return p;
 }
 
 std::random_device Random::rd;

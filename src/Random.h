@@ -1,7 +1,7 @@
 #pragma once
 #include <random>
 
-
+class Vector3;
 
 class Random
 {
@@ -25,6 +25,8 @@ public:
 
 	//Get random float from [min, max]
 	static float randf(float min, float max);
+
+	static Vector3 random_in_unit_sphere();
 
 };
 

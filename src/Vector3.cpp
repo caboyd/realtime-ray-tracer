@@ -9,7 +9,7 @@ Vector3::Vector3(): x(0), y(0), z(0)
 {
 }
 
-Vector3::Vector3(float value):x(value),y(value),z(value)
+Vector3::Vector3(float value): x(value), y(value), z(value)
 {
 }
 
@@ -95,9 +95,9 @@ int Vector3::getLargestComponentIndex() const
 	float a_y = abs(y);
 	float a_z = abs(z);
 
-	if(a_x >= a_y && a_x >= a_z) return 0;
-	if(a_y >= a_x && a_y >= a_z) return 1;
-	if(a_z >= a_y && a_z >= a_x) return 2;
+	if (a_x >= a_y && a_x >= a_z) return 0;
+	if (a_y >= a_x && a_y >= a_z) return 1;
+	if (a_z >= a_y && a_z >= a_x) return 2;
 	assert(false);
 	return 0;
 }
@@ -245,7 +245,7 @@ std::ostream& operator<<(std::ostream& os, const Vector3& v)
 {
 	if (!os.good())
 		return os;
-	os  << std::fixed;
+	os << std::fixed;
 	os << "(" << v.x << ", " << v.y << ", " << v.z << ")";
 	os.unsetf(std::ios_base::fixed);
 	return os;
