@@ -5,29 +5,35 @@
 constexpr float M_PI = 3.141592653589793238462643383279502884f; /* pi */
 
 //constructor(eye: vec3, target: vec3, up: vec3, vFov: number, aspect: number, aperture: number, focus_dist: number)
-Camera::Camera(const Vector3& pos, const Vector3& normal, const Vector3& up, float vFov, float aspect_ratio)
+Camera::Camera(const Vector3& eye, const Vector3& target, const Vector3& up, float vFov, float aspect_ratio)
 {
 	//Convert to radius
 	float theta = (vFov * M_PI) / 180.0f;
-    float half_height = tan(theta / 2) * 0.05f;
+    float half_height = tan(theta / 2);
     float half_width = aspect_ratio * half_height;
 
-	position = pos;
-	this->normal = normal;
-	screen_horizontal = Vector3(1,0,0) * 2 * half_width;
-	screen_vertical = Vector3(0,1,0) * 2 * half_height;
-	lower_left_corner = Vector3(-half_width,-half_height,-1.0f);
+	position = eye;
+	this->normal = eye - target;
+	Vector3 right = up.cross(normal).getNormalized();
+	Vector3 actual_up = normal.cross(right);
+
+	lower_left_corner = this->position - half_width * right - half_height * actual_up - this->normal;
+
+	screen_horizontal = right * 2 * half_width;
+	screen_vertical = actual_up * 2 * half_height;
+
 }
 
-Camera::Camera(const Vector3& pos, const Vector3& normal, const Vector3& up, float focal_length_mm, float film_size_mm, float aspect_ratio)
+Camera::Camera(const Vector3& eye, const Vector3& target, const Vector3& up, float focal_length_mm, float film_size_mm, float aspect_ratio)
 {
 	//https://en.wikipedia.org/wiki/Angle_of_view
+	//Convert to metres and divide by 2
 	float half_height = film_size_mm / 2000;
 	float half_width  = aspect_ratio * film_size_mm / 2000;
 	float f = focal_length_mm / 1000;
 
-	position = pos;
-	this->normal = normal;
+	position = eye;
+	this->normal = eye - target;
 	screen_horizontal = Vector3(1,0,0) * 2 * half_width;
 	screen_vertical = Vector3(0,1,0) * 2 * half_height;
 	lower_left_corner = Vector3(-half_width,-half_height,-f);

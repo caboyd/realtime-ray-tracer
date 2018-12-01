@@ -7,26 +7,26 @@
 
 
 
-class Polygon : Hitable
+class Polygon : public Hitable
 {
 public:
 	std::vector<Vector3> vertices;
 	Vector3 normal;
-	float kd;
+	Material *mat_ptr;
 
-	Polygon(std::vector<Vector3> verts, const Vector3& normal, float kd)
+	Polygon(std::vector<Vector3> verts, const Vector3& normal, Material* mat_ptr)
 	{
 		this->vertices = verts;
 		this->normal = normal;
-		this->kd = kd;
+		this->mat_ptr = mat_ptr;
 	}
 
-	bool hit(const Ray& ray, float t_min, float t_max, HitRecord& hit_record) override;
+	bool hit(const Ray& ray, float t_min, float t_max, HitRecord& hit_record) const override;
 private:
 	static bool pointInPolygon(std::vector<Vector3> vertices, Vector3 point, int x, int y);
 };
 
-inline bool Polygon::hit(const Ray& ray, float t_min, float t_max, HitRecord& hit_record)
+inline bool Polygon::hit(const Ray& ray, float t_min, float t_max, HitRecord& hit_record) const
 {
 	float D = -normal.dot(vertices[0]);
 
@@ -54,7 +54,7 @@ inline bool Polygon::hit(const Ray& ray, float t_min, float t_max, HitRecord& hi
 	if (pointInPolygon(vertices, point, x, y))
 	{
 		hit_record.normal = normal;
-		hit_record.kd = kd;
+		hit_record.mat_ptr = mat_ptr;
 		hit_record.position = point;
 		hit_record.t = t;
 		return true;

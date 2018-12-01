@@ -3,7 +3,13 @@
 
 
 const Vector3 Vector3::ZERO(0.0, 0.0, 0.0);
-
+const Vector3 Vector3::ONE(1.0, 1.0, 1.0);
+const Vector3 Vector3::UNIT_X_POS(1, 0, 0);
+const Vector3 Vector3::UNIT_X_NEG(-1, 0, 0);
+const Vector3 Vector3::UNIT_Y_POS(0, 1, 0);
+const Vector3 Vector3::UNIT_Y_NEG(0, -1, 0);
+const Vector3 Vector3::UNIT_Z_POS(0, 0, 1);
+const Vector3 Vector3::UNIT_Z_NEG(0, 0, -1);
 
 Vector3::Vector3(): x(0), y(0), z(0)
 {

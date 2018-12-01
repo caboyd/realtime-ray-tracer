@@ -13,6 +13,13 @@ public:
 	};
 
 	static const Vector3 ZERO;
+	static const Vector3 ONE;
+	static const Vector3 UNIT_X_POS;
+	static const Vector3 UNIT_X_NEG;
+	static const Vector3 UNIT_Y_POS;
+	static const Vector3 UNIT_Y_NEG;
+	static const Vector3 UNIT_Z_POS;
+	static const Vector3 UNIT_Z_NEG;
 
 	//Constructors
 	Vector3();

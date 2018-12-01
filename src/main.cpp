@@ -5,6 +5,9 @@
 #include "Sphere.h"
 #include "HitableList.h"
 #include "Material.h"
+#include "Box.h"
+#include "PerformanceCounter.h"
+#include <omp.h>
 
 using std::cout;
 using std::endl;
@@ -14,9 +17,10 @@ Uint32 vector3_to_uint32(const Vector3& color, float alpha = 1);
 Vector3 ray_trace(const Ray& ray, Hitable* world, int depth);
 Vector3 random_in_unit_sphere();
 
+
 int main(int argc, char** argv)
 {
-	std::cout << "test";
+	Random::init();
 
 	SDL_Init(SDL_INIT_EVERYTHING);
 	SDL_Window* window = SDL_CreateWindow("RealTime Ray-tracer", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -33,50 +37,67 @@ int main(int argc, char** argv)
 	SDL_RenderClear(renderer);
 
 	//Pos, normal, up, vFov, aspect ratio
-	Camera camera({0, 0, 0}, {0, 0, -1}, {0, 1, 0}, vFOV, SCREEN_WIDTH / SCREEN_HEIGHT);
+	Camera camera({0, 0, 0}, {0, 0, -1}, {0, 1, 0}, vFOV, ASPECT_RATIO);
 
-	Vector3 llc(-3, -2, -1);
-	Vector3 h(6, 0, 0);
-	Vector3 vert(0, 4, 0);
-	Vector3 origin(0, 0, 0);
+	Hitable* list[8];
+	list[0] = new Sphere({0, 0, -1}, 0.5, new Lambertian({0.1f, 0.2f, 0.5f}));
+	list[1] = new Sphere({0, -100.5f, -1}, 100, new Lambertian({0.8f, 0.8f, 0.0f}));
+	list[2] = new Sphere({1, 0, -1}, 0.5f, new Metal({0.8f, 0.6f, 0.2f}, 0.2f));
+	list[3] = new Sphere({-1, 0, -1}, 0.5f, new Dialectric(1.5f));
+	//list[4] = new Sphere({-1, 0, -1}, -0.48, new Dialectric(1.5f));
+	list[4] = new Box({-0.5f, -0.25f, -0.5f}, {0.25f, 0.25f, 0.125f}, new Lambertian({0.4f, 0.4f, 1.0f}));
 
-	Hitable* list[4];
-	list[0] = new Sphere({0, 0, -1}, 0.5, new Lambertian({0.8f,0.3f,0.3f}));
-	list[1] = new Sphere({0, -100.5, -1}, 100, new Lambertian({0.8, 0.8, 0.0}));
-	list[2] = new Sphere({1,0, -1}, 0.5, new Metal({0.8, 0.6, 0.2}));
-	list[3] = new Sphere({-1, 0, -1}, 0.5, new Metal({0.8, 0.8, 0.8}));
-	Hitable* world = new HitableList(list, 4);
+	//list[5] = new Polygon({{-10,-1,-1.1},{0,-1,-1.1},{0,10,-1.1},{-10,10,-1.1}},Vector3::UNIT_Z_POS, new Lambertian({0.2,0.2,0.2}));
 
-	for (unsigned int y = 0; y < SCREEN_HEIGHT; y++)
+	Hitable* world = new HitableList(list, 5);
+
+	PerformanceCounter p{};
+	p.start();
+
+#pragma omp parallel for
+	for (int y = 0; y < SCREEN_HEIGHT; y++)
 	{
+		thread_local std::mt19937 gen(std::random_device{}());
 		for (unsigned int x = 0; x < SCREEN_WIDTH; x++)
 		{
 			Vector3 color(0, 0, 0);
+#ifdef SAMPLING
 			for (unsigned int s = 0; s < MAX_SAMPLES; s++)
 			{
-				float u = Random::randf(x - 0.5f, x + 0.5f) / float(SCREEN_WIDTH);
-				float v = Random::randf(y - 0.5f, y + 0.5f) / float(SCREEN_HEIGHT);
-
-				Ray ray(origin, llc + u * h + v * vert);
+				//Thread safe rand	
+				float u = Random::randf(gen, x - 0.5f, x + 0.5f) / float(SCREEN_WIDTH);
+				float v = Random::randf(gen, y - 0.5f, y + 0.5f) / float(SCREEN_HEIGHT);
+#else
+				float u = x / float(SCREEN_WIDTH);
+				float v = y / float(SCREEN_HEIGHT);
+#endif
+				Ray ray = camera.getRay(u, v);
 				//Ray ray = camera.getRay(u, v);
 				color += ray_trace(ray, world, 0);
+#ifdef SAMPLING
 			}
-			if (y == 399)
-				int a = 0;
+
 			color /= float(MAX_SAMPLES);
-			color = {sqrtf(color.r),sqrtf(color.g),sqrtf(color.b)};
-			pixels[(SCREEN_HEIGHT - y - 1) * 600 + x] = vector3_to_uint32(color);
+#endif
+			color = {sqrtf(color.r), sqrtf(color.g), sqrtf(color.b)};
+			pixels[(SCREEN_HEIGHT - y - 1) * SCREEN_WIDTH + x] = vector3_to_uint32(color);
 		}
-		cout << y << endl;
+		cout << y << " " << omp_get_thread_num() << endl;
 	}
 
-	SDL_UpdateTexture(texture, NULL, pixels, sizeof(Uint32) * 600);
+	cout << p.getAndReset() / 1000 << "s" << endl;
+	
+	SDL_UpdateTexture(texture, NULL, pixels, sizeof(Uint32) * SCREEN_WIDTH);
 	SDL_RenderCopy(renderer, texture,NULL,NULL);
 	SDL_RenderPresent(renderer);
 
 	SDL_Event event;
 	bool quit = false;
-	while (!quit)
+	while
+	(
+		!
+		quit
+	)
 	{
 		SDL_RenderPresent(renderer);
 		SDL_WaitEvent(&event);
@@ -90,7 +111,8 @@ int main(int argc, char** argv)
 	SDL_DestroyWindow(window);
 	SDL_Quit();
 
-	return 0;
+	return
+		0;
 }
 
 inline Uint32 rgba_to_uint32(Uint8 r, Uint8 g, Uint8 b, Uint8 a)
@@ -113,18 +135,17 @@ Vector3 ray_trace(const Ray& ray, Hitable* world, int depth)
 {
 	HitRecord rec;
 
-	if (world->hit(ray, 0.001, FLT_MAX, rec))
+	if (world->hit(ray, 0.001f, FLT_MAX, rec))
 	{
 		Ray ray_out;
 		Vector3 attenuation;
 
-		if( depth < MAX_RAY_DEPTH && rec.mat_ptr->scatter(ray, rec, attenuation, ray_out))
+		if (depth < MAX_RAY_DEPTH && rec.mat_ptr->scatter(ray, rec, attenuation, ray_out))
 		{
 			return attenuation * ray_trace(ray_out, world, depth + 1);
-		} else
+		}
+		else
 		{
-
-
 			return Vector3::ZERO;
 		}
 	}
@@ -135,5 +156,3 @@ Vector3 ray_trace(const Ray& ray, Hitable* world, int depth)
 		return (1.0f - t) * Vector3(1, 1, 1) + t * Vector3(0.5f, 0.7f, 1.0f);
 	}
 }
-
-

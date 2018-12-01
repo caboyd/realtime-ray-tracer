@@ -13,8 +13,8 @@ public:
 	Vector3 screen_vertical;
 	Vector3 lower_left_corner;
 
-	Camera(const Vector3& pos, const Vector3& normal, const Vector3& up, float vFov, float aspect_ratio);
-	Camera(const Vector3& pos, const Vector3& normal, const Vector3& up, float focal_length, float film_size, float aspect_ratio);
+	Camera(const Vector3& eye, const Vector3& target, const Vector3& up, float vFov, float aspect_ratio);
+	Camera(const Vector3& eye, const Vector3& target, const Vector3& up, float focal_length, float film_size, float aspect_ratio);
 
 	Ray getRay(float x, float y) const;
 

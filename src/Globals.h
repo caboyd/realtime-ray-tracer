@@ -5,6 +5,8 @@
 
 #define global_extern extern
 
+#define SAMPLING
+
 global_extern const unsigned int SCREEN_WIDTH;
 global_extern const unsigned int SCREEN_HEIGHT;
 global_extern const float ASPECT_RATIO;
