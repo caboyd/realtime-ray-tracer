@@ -7,7 +7,9 @@
 #include "Material.h"
 #include "Box.h"
 #include "PerformanceCounter.h"
+#include "Polygon.h"
 #include <omp.h>
+#include "XYRect.h"
 
 using std::cout;
 using std::endl;
@@ -16,7 +18,11 @@ Uint32 rgba_to_uint32(Uint8 r, Uint8 g, Uint8 b, Uint8 a);
 Uint32 vector3_to_uint32(const Vector3& color, float alpha = 1);
 Vector3 ray_trace(const Ray& ray, Hitable* world, int depth);
 Vector3 random_in_unit_sphere();
+void generateLightsFromRect(std::vector<Vector3>& lights, float xmin, float xmax, float ymin, float ymax, float zmin,
+                            float zmax, float step_size);
 
+Hitable* simpleLight();
+Hitable* cornell_box();
 
 int main(int argc, char** argv)
 {
@@ -37,22 +43,17 @@ int main(int argc, char** argv)
 	SDL_RenderClear(renderer);
 
 	//Pos, normal, up, vFov, aspect ratio
-	Camera camera({0, 0, 0}, {0, 0, -1}, {0, 1, 0}, vFOV, ASPECT_RATIO);
+	const float vFOV = 40;
+	Camera camera({278, 278, 1}, {278, 278, 0}, {0, 1, 0}, vFOV, ASPECT_RATIO);
+	Hitable* world = cornell_box();
 
-	Hitable* list[8];
-	list[0] = new Sphere({0, 0, -1}, 0.5, new Lambertian({0.1f, 0.2f, 0.5f}));
-	list[1] = new Sphere({0, -100.5f, -1}, 100, new Lambertian({0.8f, 0.8f, 0.0f}));
-	list[2] = new Sphere({1, 0, -1}, 0.5f, new Metal({0.8f, 0.6f, 0.2f}, 0.2f));
-	list[3] = new Sphere({-1, 0, -1}, 0.5f, new Dialectric(1.5f));
-	//list[4] = new Sphere({-1, 0, -1}, -0.48, new Dialectric(1.5f));
-	list[4] = new Box({-0.5f, -0.25f, -0.5f}, {0.25f, 0.25f, 0.125f}, new Lambertian({0.4f, 0.4f, 1.0f}));
+	//Camera camera({5, 2, 10}, {1, 1,-1}, {0, 1, 0}, vFOV, ASPECT_RATIO);
+	//Hitable* world = simpleLight();
 
-	//list[5] = new Polygon({{-10,-1,-1.1},{0,-1,-1.1},{0,10,-1.1},{-10,10,-1.1}},Vector3::UNIT_Z_POS, new Lambertian({0.2,0.2,0.2}));
-
-	Hitable* world = new HitableList(list, 5);
 
 	PerformanceCounter p{};
 	p.start();
+	double time = 0;
 
 #pragma omp parallel for
 	for (int y = 0; y < SCREEN_HEIGHT; y++)
@@ -62,18 +63,18 @@ int main(int argc, char** argv)
 		{
 			Vector3 color(0, 0, 0);
 #ifdef SAMPLING
-			for (unsigned int s = 0; s < MAX_SAMPLES; s++)
+			for (int s = 0; s < MAX_SAMPLES; s++)
 			{
 				//Thread safe rand	
-				float u = Random::randf(gen, x - 0.5f, x + 0.5f) / float(SCREEN_WIDTH);
-				float v = Random::randf(gen, y - 0.5f, y + 0.5f) / float(SCREEN_HEIGHT);
+				float u = Random::randf(gen, x, x + 1) / float(SCREEN_WIDTH);
+				float v = Random::randf(gen, y, y + 1) / float(SCREEN_HEIGHT);
 #else
-				float u = x / float(SCREEN_WIDTH);
-				float v = y / float(SCREEN_HEIGHT);
+			float u = x / float(SCREEN_WIDTH);
+			float v = y / float(SCREEN_HEIGHT);
 #endif
-				Ray ray = camera.getRay(u, v);
-				//Ray ray = camera.getRay(u, v);
-				color += ray_trace(ray, world, 0);
+			Ray ray = camera.getRay(u, v);
+			//Ray ray = camera.getRay(u, v);
+			color += ray_trace(ray, world, 0);
 #ifdef SAMPLING
 			}
 
@@ -82,11 +83,13 @@ int main(int argc, char** argv)
 			color = {sqrtf(color.r), sqrtf(color.g), sqrtf(color.b)};
 			pixels[(SCREEN_HEIGHT - y - 1) * SCREEN_WIDTH + x] = vector3_to_uint32(color);
 		}
-		cout << y << " " << omp_get_thread_num() << endl;
+		//time = p.getCounter() / float(y) / 1000.0f;
+		cout << "Row " << y << "/" << SCREEN_HEIGHT << endl;
+		//cout << "  Estimated Time remaining:" << (SCREEN_HEIGHT - y) * time << "s" << endl;
 	}
 
 	cout << p.getAndReset() / 1000 << "s" << endl;
-	
+
 	SDL_UpdateTexture(texture, NULL, pixels, sizeof(Uint32) * SCREEN_WIDTH);
 	SDL_RenderCopy(renderer, texture,NULL,NULL);
 	SDL_RenderPresent(renderer);
@@ -124,9 +127,13 @@ inline Uint32 rgba_to_uint32(Uint8 r, Uint8 g, Uint8 b, Uint8 a)
 Uint32 vector3_to_uint32(const Vector3& color, float alpha)
 {
 	int r = int(255.9 * color.r);
+	r = std::clamp(r, 0, 255);
 	int g = int(255.9 * color.g);
+	g = std::clamp(g, 0, 255);
 	int b = int(255.9 * color.b);
+	b = std::clamp(b, 0, 255);
 	int a = int(255.9 * alpha);
+	a = std::clamp(a, 0, 255);
 	auto result = r << 24 | g << 16 | b << 8 | a;
 	return result;
 }
@@ -134,25 +141,103 @@ Uint32 vector3_to_uint32(const Vector3& color, float alpha)
 Vector3 ray_trace(const Ray& ray, Hitable* world, int depth)
 {
 	HitRecord rec;
+	Ray ray_out;
+	Vector3 attenuation;
 
 	if (world->hit(ray, 0.001f, FLT_MAX, rec))
 	{
-		Ray ray_out;
-		Vector3 attenuation;
-
+		Vector3 emitted = rec.mat_ptr->emitted(rec.u, rec.v, rec.position);
 		if (depth < MAX_RAY_DEPTH && rec.mat_ptr->scatter(ray, rec, attenuation, ray_out))
 		{
-			return attenuation * ray_trace(ray_out, world, depth + 1);
+#ifndef LAMBERTIAN
+			//blinn-phong lighting
+			//no specular yet
+			HitRecord last_rec = rec;
+			if (dynamic_cast<Lambertian*>(last_rec.mat_ptr))
+			{
+				Vector3 light_amount(0);
+				for (auto&& light : g_lights)
+				{
+					Vector3 light_dir = (light - last_rec.position).getNormalized();
+					float dot = last_rec.normal.dot(light_dir);
+					//Offset bias for acne
+					Ray ray(last_rec.position + last_rec.normal * 0.01, light_dir);
+					bool in_shadow = (world->hit(ray, 0.001f, (light - last_rec.position).length() * 0.99, rec));
+
+					light_amount += (1.0f - in_shadow) * dot;
+				}
+				return attenuation * (light_amount / float(g_lights.size()));
+			}
+#endif
+			return emitted + attenuation * ray_trace(ray_out, world, depth + 1);
 		}
 		else
-		{
-			return Vector3::ZERO;
-		}
+
+			return emitted;
 	}
 	else
-	{
-		Vector3 unit_direction = ray.direction.getNormalized();
-		float t = 0.5f * (unit_direction.y + 1.0f);
-		return (1.0f - t) * Vector3(1, 1, 1) + t * Vector3(0.5f, 0.7f, 1.0f);
-	}
+		return Vector3::ZERO;
+}
+
+Hitable* simpleLight()
+{
+	Texture* t = new ConstantTexture({1, 0, 0});
+	Texture* checker = new CheckerTexture(new ConstantTexture({.2, .3, .1}), new ConstantTexture({.9, .9, .9}), 10);
+	Hitable** list = new Hitable*[4];
+
+	list[0] = new Sphere({0, -1000, 0}, 1000, new Lambertian(checker));
+	list[1] = new Sphere({0, 1, 2}, 3, new Lambertian(t));
+	list[2] = new Sphere({0, 7, 0}, 2, new DiffuseLight(new ConstantTexture({4, 4, 4})));
+	list[3] = new XYRect(3, 5, 1, 3, -2, new DiffuseLight(new ConstantTexture({4, 4, 4})));
+
+
+	generateLightsFromRect(g_lights, 3, 5, 1, 3, -2, -2, 0.2f);
+
+	return new HitableList(list, 4);
+}
+
+Hitable* cornell_box()
+{
+	Material* white = new Lambertian(new ConstantTexture({0.73, 0.73, 0.73}));
+	Material* red = new Lambertian(new ConstantTexture({0.65, 0.05, 0.05}));
+	Material* green = new Lambertian(new ConstantTexture({0.12, 0.45, 0.15}));
+	Material* blue = new Lambertian(new ConstantTexture({0.12, 0.15, 0.56}));
+	Material* light = new DiffuseLight(new ConstantTexture({15, 15, 15}));
+	Material* checker = new Lambertian(new CheckerTexture(new ConstantTexture({0.12, 0.45, 0.15}),
+	                                                      new ConstantTexture({0.73, 0.73, 0.73}), 0.05));
+
+	Material* mirror = new Metal({0.95, 0.95, 0.95}, 0.0f);
+	Material* dialectric = new Dialectric(1.5);
+
+	Hitable** list = new Hitable*[11];
+	int i = 0;
+
+	generateLightsFromRect(g_lights, 213, 343, 524, 524, 227, 332, 10.f);
+
+	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, checker));
+	list[i++] = new YZRect(0, 555, 0, 555, 0, red);
+	list[i++] = new XZRect(213, 343, 227, 332, 554, light);
+	list[i++] = new FlipNormals(new XZRect(0, 555, 0, 555, 555, white));
+	list[i++] = new XZRect(0, 555, 0, 555, 0, white);
+	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, mirror));
+	list[i++] = new XYRect(0, 555, 0, 555, 0, mirror);
+
+	list[i++] = new Sphere({120, 50, 278}, 80, green);
+	list[i++] = new Sphere({420, 50, 278}, 80, red);
+	list[i++] = new Box({278, 70, 80}, {240, 140, 140}, mirror);
+	list[i++] = new Sphere({278, 15, 260}, 40, mirror);
+	list[i++] = new Sphere({40, 278, 260}, 40, dialectric);
+
+	return new HitableList(list, i);
+}
+
+
+void generateLightsFromRect(std::vector<Vector3>& lights, float xmin, float xmax, float ymin, float ymax, float zmin,
+                            float zmax, float step_size)
+{
+	for (float x = xmin; x <= xmax; x += step_size)
+
+		for (float y = ymin; y <= ymax; y += step_size)
+			for (float z = zmin; z <= zmax; z += step_size)
+				lights.emplace_back(x, y, z);
 }

@@ -4,6 +4,7 @@
 #include "Vector3.h"
 #include "Random.h"
 #include "Ray.h"
+#include "Texture.h"
 
 inline Vector3 reflect(const Vector3& v, const Vector3& n);
 inline bool refract(const Vector3& v, const Vector3& n, float ni_over_nt, Vector3& refracted);
@@ -15,26 +16,23 @@ public:
 	virtual ~Material() = default;
 	virtual bool scatter(const Ray& ray_in, const HitRecord& rec, Vector3& attenuation,
 	                     Ray& scattered_ray_out) const = 0;
+	virtual Vector3 emitted(float u, float v, const Vector3& p) const { return Vector3::ZERO; }
 };
 
 class Lambertian : public Material
 {
 public:
-	Vector3 albedo;
+	Texture* albedo;
 
-	Lambertian(const Vector3& a) : albedo(a)
+	Lambertian(Texture* a) : albedo(a)
 	{
 	}
 
 	bool scatter(const Ray& ray_in, const HitRecord& rec, Vector3& attenuation, Ray& scattered_ray_out) const override
 	{
-#ifdef SAMPLING
 		const Vector3 out_direction = rec.normal + Random::random_in_unit_sphere();
-#else
-		const Vector3 out_direction = rec.normal;
-#endif
 		scattered_ray_out = Ray(rec.position, out_direction);
-		attenuation = albedo;
+		attenuation = albedo->value(0, 0, rec.position);
 		return true;
 	}
 };
@@ -55,12 +53,14 @@ public:
 	bool scatter(const Ray& ray_in, const HitRecord& rec, Vector3& attenuation, Ray& scattered_ray_out) const override
 	{
 		Vector3 reflected = reflect(ray_in.direction.getNormalized(), rec.normal);
-#ifdef SAMPLING
+#ifdef PATH_TRACING
 		scattered_ray_out = Ray(rec.position, reflected + fuzz * Random::random_in_unit_sphere());
+		attenuation = albedo;
 #else
 		scattered_ray_out = Ray(rec.position, reflected);
+		attenuation = albedo * (1.0 - fuzz);
 #endif
-		attenuation = albedo;
+
 		return (scattered_ray_out.direction.dot(rec.normal) > 0);
 	}
 };
@@ -103,14 +103,35 @@ public:
 		else
 			reflect_prob = 1.0;
 
-#ifdef SAMPLING
+#ifdef PATH_TRACING
 		if (Random::randf(0, 1) < reflect_prob)
 			scattered_ray_out = Ray(rec.position, reflected);
 		else
 #endif
-			scattered_ray_out = Ray(rec.position, refracted);
+		scattered_ray_out = Ray(rec.position, refracted);
 
 		return true;
+	}
+};
+
+
+class DiffuseLight : public Material
+{
+public:
+	Texture* emit;
+
+	DiffuseLight(Texture* a) : emit(a)
+	{
+	}
+
+	bool scatter(const Ray& ray_in, const HitRecord& rec, Vector3& attenuation, Ray& scattered_ray_out) const override
+	{
+		return false;
+	}
+
+	Vector3 emitted(float u, float v, const Vector3& p) const override
+	{
+		return emit->value(u, v, p);
 	}
 };
 

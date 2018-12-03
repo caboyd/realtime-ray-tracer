@@ -4,7 +4,6 @@
 #include "Ray.h"
 #include "HitRecord.h"
 
-void updateHitRecord(const Vector3& position, const Vector3& normal, float t, Material* mat_ptr, HitRecord& rec);
 
 class Box : public Hitable
 {
@@ -19,6 +18,9 @@ public:
 		this->dimensions = dimensions;
 		this->mat_ptr = mat;
 	}
+
+	void updateHitRecord(const Vector3& position, int u, int v, const Vector3& normal, float t, Material* mat_ptr,
+	                     HitRecord& rec) const;
 
 	bool hit(const Ray& ray, float t_min, float t_max, HitRecord& hit_record) const override
 	{
@@ -47,7 +49,7 @@ public:
 			if (!hit_anything || t < hit_record.t)
 				if (t > t_min && t < t_max)
 				{
-					updateHitRecord(p, Vector3::UNIT_X_NEG, t, mat_ptr, hit_record);
+					updateHitRecord(p, 1, 2, Vector3::UNIT_X_NEG, t, mat_ptr, hit_record);
 					hit_anything = true;
 				}
 		}
@@ -60,7 +62,7 @@ public:
 			if (!hit_anything || t < hit_record.t)
 				if (t > t_min && t < t_max)
 				{
-					updateHitRecord(p, Vector3::UNIT_X_POS, t, mat_ptr, hit_record);
+					updateHitRecord(p, 1, 2, Vector3::UNIT_X_POS, t, mat_ptr, hit_record);
 					hit_anything = true;
 				}
 		}
@@ -74,7 +76,7 @@ public:
 			if (!hit_anything || t < hit_record.t)
 				if (t > t_min && t < t_max)
 				{
-					updateHitRecord(p, Vector3::UNIT_Y_NEG, t, mat_ptr, hit_record);
+					updateHitRecord(p, 0, 2, Vector3::UNIT_Y_NEG, t, mat_ptr, hit_record);
 					hit_anything = true;
 				}
 		}
@@ -87,7 +89,7 @@ public:
 			if (!hit_anything || t < hit_record.t)
 				if (t > t_min && t < t_max)
 				{
-					updateHitRecord(p, Vector3::UNIT_Y_POS, t, mat_ptr, hit_record);
+					updateHitRecord(p, 0, 2, Vector3::UNIT_Y_POS, t, mat_ptr, hit_record);
 					hit_anything = true;
 				}
 		}
@@ -100,7 +102,7 @@ public:
 			if (!hit_anything || t < hit_record.t)
 				if (t > t_min && t < t_max)
 				{
-					updateHitRecord(p, Vector3::UNIT_Z_NEG, t, mat_ptr, hit_record);
+					updateHitRecord(p, 0, 1, Vector3::UNIT_Z_NEG, t, mat_ptr, hit_record);
 					hit_anything = true;
 				}
 		}
@@ -113,7 +115,7 @@ public:
 			if (!hit_anything || t < hit_record.t)
 				if (t > t_min && t < t_max)
 				{
-					updateHitRecord(p, Vector3::UNIT_Z_POS, t, mat_ptr, hit_record);
+					updateHitRecord(p, 0, 1, Vector3::UNIT_Z_POS, t, mat_ptr, hit_record);
 					hit_anything = true;
 				}
 		}
@@ -121,11 +123,13 @@ public:
 	}
 };
 
-
-void updateHitRecord(const Vector3& position, const Vector3& normal, float t, Material* mat_ptr, HitRecord& rec)
+void Box::updateHitRecord(const Vector3& position, int u, int v, const Vector3& normal, float t, Material* mat_ptr,
+                          HitRecord& rec) const
 {
 	rec.position = position;
 	rec.normal = normal;
 	rec.t = t;
 	rec.mat_ptr = mat_ptr;
+	rec.u = ((position[u] - center[u]) / dimensions[u] + 1.0) * 0.5;
+	rec.v = ((position[v] - center[v]) / dimensions[v] + 1.0) * 0.5;
 }

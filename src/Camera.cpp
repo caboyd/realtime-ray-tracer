@@ -13,11 +13,12 @@ Camera::Camera(const Vector3& eye, const Vector3& target, const Vector3& up, flo
     float half_width = aspect_ratio * half_height;
 
 	position = eye;
-	this->normal = eye - target;
-	Vector3 right = up.cross(normal).getNormalized();
-	Vector3 actual_up = normal.cross(right);
+	normal = (target - eye).getNormalized();
+	Vector3 target_to_eye = (eye - target).getNormalized();
+	Vector3 right = up.cross(target_to_eye).getNormalized();
+	Vector3 actual_up = target_to_eye.cross(right);
 
-	lower_left_corner = this->position - half_width * right - half_height * actual_up - this->normal;
+	lower_left_corner = this->position - half_width * right - half_height * actual_up - target_to_eye;
 
 	screen_horizontal = right * 2 * half_width;
 	screen_vertical = actual_up * 2 * half_height;
@@ -42,12 +43,12 @@ Camera::Camera(const Vector3& eye, const Vector3& target, const Vector3& up, flo
 Ray Camera::getRay(float x, float y) const
 {
 	Ray r;
-	r.origin = Vector3(0);
+	r.origin = this->position;
 
 	//This is essentially 
 	//x = (xmax – xmin)*j/(M – 1) + xmin
 	//y = (ymax – ymin)*i/(N – 1) + ymin
-	r.direction = this->lower_left_corner + this->screen_horizontal * x + this->screen_vertical * y;
+	r.direction = this->lower_left_corner + this->screen_horizontal * x + this->screen_vertical * y - r.origin;
 	return r;
 
 }

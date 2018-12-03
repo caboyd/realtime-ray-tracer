@@ -5,6 +5,8 @@
 #include "HitRecord.h"
 #include "Material.h"
 
+void getSphereUV(const Vector3& p, float& u, float& v);
+
 class Sphere : public Hitable
 {
 public:
@@ -25,6 +27,7 @@ public:
 	}
 
 	bool hit(const Ray& ray, float t_min, float t_max, HitRecord& hit_record) const;
+
 
 private:
 	bool sphereIntersectionMethod1(const Ray& ray, float t_min, float t_max, HitRecord& hit_record) const;
@@ -139,7 +142,10 @@ inline bool Sphere::sphereIntersectionMethod2(const Ray& ray, float t_min, float
 			hit_record.position = ray.point_at_parameter(t0);
 			hit_record.normal = (hit_record.position - center) / radius;
 			hit_record.mat_ptr = mat_ptr;
-
+			float u, v;
+			getSphereUV(hit_record.position - center, u, v);
+			hit_record.u = u;
+			hit_record.v = v;
 			return true;
 		}
 
@@ -150,9 +156,21 @@ inline bool Sphere::sphereIntersectionMethod2(const Ray& ray, float t_min, float
 			hit_record.position = ray.point_at_parameter(t1);
 			hit_record.normal = (hit_record.position - center) / radius;
 			hit_record.mat_ptr = mat_ptr;
-
+			float u, v;
+			getSphereUV(hit_record.position - center, u, v);
+			hit_record.u = u;
+			hit_record.v = v;
 			return true;
 		}
 	}
 	return false;
+}
+
+
+void getSphereUV(const Vector3& p, float& u, float& v)
+{
+	float phi = atan2(p.z, p.x);
+	float theta = asin(p.y);
+	u = 1 - (phi + M_PI) / (2 / M_PI);
+	v = (theta + M_PI / 2) / M_PI;
 }

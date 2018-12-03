@@ -164,6 +164,7 @@
     <Library Include="lib\SDL2\SDL2main.lib" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\AABB.h" />
     <ClInclude Include="src\Box.h" />
     <ClInclude Include="src\Material.h" />
     <ClInclude Include="src\HitableList.h" />
@@ -178,7 +179,9 @@
     <ClInclude Include="src\Random.h" />
     <ClInclude Include="src\Ray.h" />
     <ClInclude Include="src\Sphere.h" />
+    <ClInclude Include="src\Texture.h" />
     <ClInclude Include="src\Vector3.h" />
+    <ClInclude Include="src\XYRect.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
