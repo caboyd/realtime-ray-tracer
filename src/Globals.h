@@ -7,10 +7,13 @@
 #define global_extern extern
 
 #define SAMPLING
+#define UNIFORM_SAMPLING
 #define PATH_TRACING
+//#define LAMBERTIAN
 
-global_extern const unsigned int SCREEN_WIDTH;
-global_extern const unsigned int SCREEN_HEIGHT;
+
+global_extern const int SCREEN_WIDTH;
+global_extern const int SCREEN_HEIGHT;
 global_extern const float ASPECT_RATIO;
 
 global_extern const int MAX_RAY_DEPTH;

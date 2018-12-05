@@ -72,7 +72,23 @@ Vector3 Random::random_in_unit_sphere(std::mt19937& gen)
 	Vector3 p;
 	do
 	{
-		p = Vector3(Random::randf(gen, -1, 1), Random::randf(gen, -1, 1), Random::randf(gen, -1, 1));
+		p.set(Random::randf(gen, -1, 1), Random::randf(gen, -1, 1), Random::randf(gen, -1, 1));
+	}
+	while (p.getSquaredLength() >= 1.0);
+	return p;
+}
+
+Vector3 Random::random_in_unit_disk()
+{
+	return random_in_unit_disk(gen);
+}
+
+Vector3 Random::random_in_unit_disk(std::mt19937& gen)
+{
+	Vector3 p;
+	do
+	{
+		p.set(Random::randf(gen, -1, 1), Random::randf(gen, -1, 1), 0);
 	}
 	while (p.getSquaredLength() >= 1.0);
 	return p;

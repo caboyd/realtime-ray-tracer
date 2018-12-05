@@ -10,6 +10,8 @@
 #include "Polygon.h"
 #include <omp.h>
 #include "XYRect.h"
+#include "BVHNode.h"
+#include "MovingSphere.h"
 
 using std::cout;
 using std::endl;
@@ -44,7 +46,10 @@ int main(int argc, char** argv)
 
 	//Pos, normal, up, vFov, aspect ratio
 	const float vFOV = 40;
-	Camera camera({278, 278, 1}, {278, 278, 0}, {0, 1, 0}, vFOV, ASPECT_RATIO);
+	Vector3 eye(278, 278, 1);
+	Vector3 target(278, 278, 0);
+
+	Camera camera({278, 278, -800}, {278, 278, 0}, {0, 1, 0}, vFOV, ASPECT_RATIO, 0.0, 10.0, 0.0, 1);
 	Hitable* world = cornell_box();
 
 	//Camera camera({5, 2, 10}, {1, 1,-1}, {0, 1, 0}, vFOV, ASPECT_RATIO);
@@ -55,28 +60,48 @@ int main(int argc, char** argv)
 	p.start();
 	double time = 0;
 
+	int SS = int(sqrtf(MAX_SAMPLES));
+
 #pragma omp parallel for
 	for (int y = 0; y < SCREEN_HEIGHT; y++)
 	{
 		thread_local std::mt19937 gen(std::random_device{}());
-		for (unsigned int x = 0; x < SCREEN_WIDTH; x++)
+		for (int x = 0; x < SCREEN_WIDTH; x++)
 		{
 			Vector3 color(0, 0, 0);
 #ifdef SAMPLING
+
+#ifdef UNIFORM_SAMPLING
+			for (int s = 0; s < SS; s++)
+			{
+				for (int s2 = 0; s2 < SS; s2++)
+				{
+					float u = float(x + float(s) / float(SS) + 1 / float(SS * 2));
+					float v = float(y + float(s2) / float(SS) + 1 / float(SS * 2));
+
+#else
+
+
 			for (int s = 0; s < MAX_SAMPLES; s++)
 			{
 				//Thread safe rand	
-				float u = Random::randf(gen, x, x + 1) / float(SCREEN_WIDTH);
-				float v = Random::randf(gen, y, y + 1) / float(SCREEN_HEIGHT);
-#else
-			float u = x / float(SCREEN_WIDTH);
-			float v = y / float(SCREEN_HEIGHT);
+				float u = Random::randf(gen, x, x + 1);
+				float v = Random::randf(gen, y, y + 1) ;
 #endif
-			Ray ray = camera.getRay(u, v);
-			//Ray ray = camera.getRay(u, v);
-			color += ray_trace(ray, world, 0);
+
+					u = u / float(SCREEN_WIDTH);
+					v = v / float(SCREEN_HEIGHT);
+#endif
+					Ray ray = camera.getRay(u, v);
+					//Ray ray = camera.getRay(u, v);
+					color += ray_trace(ray, world, 0);
+
 #ifdef SAMPLING
+				}
+
+#ifdef UNIFORM_SAMPLING
 			}
+#endif
 
 			color /= float(MAX_SAMPLES);
 #endif
@@ -98,6 +123,7 @@ int main(int argc, char** argv)
 	bool quit = false;
 	while
 	(
+
 		!
 		quit
 	)
@@ -142,6 +168,7 @@ Vector3 ray_trace(const Ray& ray, Hitable* world, int depth)
 {
 	HitRecord rec;
 	Ray ray_out;
+	ray_out.time = ray.time;
 	Vector3 attenuation;
 
 	if (world->hit(ray, 0.001f, FLT_MAX, rec))
@@ -150,6 +177,7 @@ Vector3 ray_trace(const Ray& ray, Hitable* world, int depth)
 		if (depth < MAX_RAY_DEPTH && rec.mat_ptr->scatter(ray, rec, attenuation, ray_out))
 		{
 #ifndef LAMBERTIAN
+
 			//blinn-phong lighting
 			//no specular yet
 			HitRecord last_rec = rec;
@@ -158,11 +186,16 @@ Vector3 ray_trace(const Ray& ray, Hitable* world, int depth)
 				Vector3 light_amount(0);
 				for (auto&& light : g_lights)
 				{
-					Vector3 light_dir = (light - last_rec.position).getNormalized();
+#ifdef  PATH_TRACING
+					Vector3 light_position = Vector3(light.x + Random::randf(-50,50),light.y + Random::randf(-10,10),light.z + Random::randf(-50,50));			
+#else
+					Vector3 light_position = light;
+#endif
+					Vector3 light_dir = (light_position - last_rec.position).getNormalized();
 					float dot = last_rec.normal.dot(light_dir);
 					//Offset bias for acne
-					Ray ray(last_rec.position + last_rec.normal * 0.01, light_dir);
-					bool in_shadow = (world->hit(ray, 0.001f, (light - last_rec.position).length() * 0.99, rec));
+					Ray ray(last_rec.position + last_rec.normal * 0.01, light_dir, ray_out.time);
+					bool in_shadow = (world->hit(ray, 0.001f, (light - last_rec.position).length() * 0.999, rec));
 
 					light_amount += (1.0f - in_shadow) * dot;
 				}
@@ -182,7 +215,8 @@ Vector3 ray_trace(const Ray& ray, Hitable* world, int depth)
 Hitable* simpleLight()
 {
 	Texture* t = new ConstantTexture({1, 0, 0});
-	Texture* checker = new CheckerTexture(new ConstantTexture({.2, .3, .1}), new ConstantTexture({.9, .9, .9}), 10);
+	Texture* checker = new CheckerTexture(new ConstantTexture({.2f, .3f, .1f}), new ConstantTexture({.9f, .9f, .9f}),
+	                                      10);
 	Hitable** list = new Hitable*[4];
 
 	list[0] = new Sphere({0, -1000, 0}, 1000, new Lambertian(checker));
@@ -198,36 +232,44 @@ Hitable* simpleLight()
 
 Hitable* cornell_box()
 {
-	Material* white = new Lambertian(new ConstantTexture({0.73, 0.73, 0.73}));
-	Material* red = new Lambertian(new ConstantTexture({0.65, 0.05, 0.05}));
-	Material* green = new Lambertian(new ConstantTexture({0.12, 0.45, 0.15}));
-	Material* blue = new Lambertian(new ConstantTexture({0.12, 0.15, 0.56}));
+	Material* white = new Lambertian(new ConstantTexture({0.73f, 0.73f, 0.73f}));
+	Material* red = new Lambertian(new ConstantTexture({0.65f, 0.05f, 0.05f}));
+	Material* green = new Lambertian(new ConstantTexture({0.12f, 0.45f, 0.15f}));
+	Material* blue = new Lambertian(new ConstantTexture({0.12f, 0.15f, 0.56f}));
 	Material* light = new DiffuseLight(new ConstantTexture({15, 15, 15}));
-	Material* checker = new Lambertian(new CheckerTexture(new ConstantTexture({0.12, 0.45, 0.15}),
-	                                                      new ConstantTexture({0.73, 0.73, 0.73}), 0.05));
+	Material* light2 = new DiffuseLight(new ConstantTexture({2, 2, 2}));
+	Material* checker = new Lambertian(new CheckerTexture(new ConstantTexture({0.12f, 0.45f, 0.15f}),
+	                                                      new ConstantTexture({0.73f, 0.73f, 0.73f}), 0.05f));
 
-	Material* mirror = new Metal({0.95, 0.95, 0.95}, 0.0f);
+	Material* mirror = new Metal({0.95f, 0.95f, 0.95f}, 0.3f);
 	Material* dialectric = new Dialectric(1.5);
 
 	Hitable** list = new Hitable*[11];
 	int i = 0;
 
-	generateLightsFromRect(g_lights, 213, 343, 524, 524, 227, 332, 10.f);
+	generateLightsFromRect(g_lights, (213 + 343) / 2, (213 + 343) / 2, 524, 524, (227 + 332) / 2, (227 + 332) / 2,
+	                       50.f);
 
-	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, checker));
-	list[i++] = new YZRect(0, 555, 0, 555, 0, red);
+	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, red));
+	list[i++] = new YZRect(0, 555, 0, 555, 0, green);
 	list[i++] = new XZRect(213, 343, 227, 332, 554, light);
+	//list[i++] = new XZRect(0, 555, 0, 555, 554, light2);
 	list[i++] = new FlipNormals(new XZRect(0, 555, 0, 555, 555, white));
 	list[i++] = new XZRect(0, 555, 0, 555, 0, white);
-	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, mirror));
-	list[i++] = new XYRect(0, 555, 0, 555, 0, mirror);
+	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, white));
+	//list[i++] = new XYRect(0, 555, 0, 555, 0, mirror);
 
-	list[i++] = new Sphere({120, 50, 278}, 80, green);
-	list[i++] = new Sphere({420, 50, 278}, 80, red);
-	list[i++] = new Box({278, 70, 80}, {240, 140, 140}, mirror);
-	list[i++] = new Sphere({278, 15, 260}, 40, mirror);
-	list[i++] = new Sphere({40, 278, 260}, 40, dialectric);
+	list[i++] = new Sphere({450, 80, 250}, 75, dialectric);
+#ifdef PATH_TRACING
+	list[i++] = new MovingSphere({105, 80, 250}, {105, 150, 250}, 0.f, 1.f, 75, red);
+#else
+	list[i++] = new Sphere({105, 80, 250}, 75, red);
+#endif
+	//list[i++] = new Sphere({450, 80, 250}, -70, dialectric);
+	list[i++] = new Box({278, 70, 450}, {240, 140, 140}, checker);
+	list[i++] = new Sphere({278, 20, 278}, 80, mirror);
 
+	//return new BVHNode(list, i, 0, 0);
 	return new HitableList(list, i);
 }
 

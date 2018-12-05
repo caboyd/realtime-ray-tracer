@@ -7,13 +7,15 @@ class Ray
 public:
 	Vector3 origin{};
 	Vector3 direction{};
+	float time;
 
 	Ray() = default;
 
-	Ray(const Vector3& origin, const Vector3& direction)
+	Ray(const Vector3& origin, const Vector3& direction, float ti = 0.0)
 	{
 		this->origin = origin;
 		this->direction = direction;
+		this->time = ti;
 	}
 
 	Vector3 point_at_parameter(float t) const

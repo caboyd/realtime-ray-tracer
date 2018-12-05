@@ -12,9 +12,16 @@ public:
 	Vector3 screen_horizontal;
 	Vector3 screen_vertical;
 	Vector3 lower_left_corner;
+	float lens_radius;
+	Vector3 w,u,v;
+	float time0, time1;
 
-	Camera(const Vector3& eye, const Vector3& target, const Vector3& up, float vFov, float aspect_ratio);
-	Camera(const Vector3& eye, const Vector3& target, const Vector3& up, float focal_length, float film_size, float aspect_ratio);
+
+	Camera(const Vector3& eye, const Vector3& target, const Vector3& up, float vFov, float aspect_ratio, float t0 = 0.f, float t1 = 0.f);
+	Camera(const Vector3& eye, const Vector3& target, const Vector3& up, float vFov, float aspect_ratio, float aperture,
+	       float focus_dist,  float t0 = 0.f, float t1= 0.f);
+	// Camera(const Vector3& eye, const Vector3& target, const Vector3& up, float focal_length, float film_size,
+	//        float aspect_ratio);
 
 	Ray getRay(float x, float y) const;
 

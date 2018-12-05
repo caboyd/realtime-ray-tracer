@@ -106,5 +106,11 @@
     <ClInclude Include="src\XYRect.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\BVHNode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\MovingSphere.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

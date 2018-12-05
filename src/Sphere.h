@@ -4,6 +4,7 @@
 #include "Ray.h"
 #include "HitRecord.h"
 #include "Material.h"
+#include "AABB.h"
 
 void getSphereUV(const Vector3& p, float& u, float& v);
 
@@ -26,7 +27,8 @@ public:
 		delete mat_ptr;
 	}
 
-	bool hit(const Ray& ray, float t_min, float t_max, HitRecord& hit_record) const;
+	bool hit(const Ray& ray, float t_min, float t_max, HitRecord& hit_record) const override;
+	bool bounding_box(float t0, float t1, AABB& box) const override;
 
 
 private:
@@ -37,6 +39,12 @@ private:
 inline bool Sphere::hit(const Ray& ray, float t_min, float t_max, HitRecord& hit_record) const
 {
 	return sphereIntersectionMethod2(ray, t_min, t_max, hit_record);
+}
+
+inline bool Sphere::bounding_box(float t0, float t1, AABB& box) const
+{
+	box = AABB(center - Vector3(radius), center + Vector3(radius));
+	return true;
 }
 
 
@@ -118,7 +126,7 @@ inline bool Sphere::sphereIntersectionMethod2(const Ray& ray, float t_min, float
 	Vector3 oc = ray.origin - center;
 
 	float a = ray.direction.dot(ray.direction);
-	float b = ray.direction.dot(ray.origin - center);
+	float b = ray.direction.dot(oc);
 	float c = oc.dot(oc) - radius * radius;
 
 	//Use quadratic formula
@@ -171,6 +179,6 @@ void getSphereUV(const Vector3& p, float& u, float& v)
 {
 	float phi = atan2(p.z, p.x);
 	float theta = asin(p.y);
-	u = 1 - (phi + M_PI) / (2 / M_PI);
-	v = (theta + M_PI / 2) / M_PI;
+	u = 1.f - (phi + float(M_PI)) / (2.f / float(M_PI));
+	v = (theta + float(M_PI) / 2.f) / float(M_PI);
 }

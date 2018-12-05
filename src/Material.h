@@ -31,7 +31,8 @@ public:
 	bool scatter(const Ray& ray_in, const HitRecord& rec, Vector3& attenuation, Ray& scattered_ray_out) const override
 	{
 		const Vector3 out_direction = rec.normal + Random::random_in_unit_sphere();
-		scattered_ray_out = Ray(rec.position, out_direction);
+		scattered_ray_out.origin = rec.position;
+		scattered_ray_out.direction = out_direction;
 		attenuation = albedo->value(0, 0, rec.position);
 		return true;
 	}
@@ -52,14 +53,20 @@ public:
 
 	bool scatter(const Ray& ray_in, const HitRecord& rec, Vector3& attenuation, Ray& scattered_ray_out) const override
 	{
+		scattered_ray_out.time = ray_in.time;
 		Vector3 reflected = reflect(ray_in.direction.getNormalized(), rec.normal);
 #ifdef PATH_TRACING
-		scattered_ray_out = Ray(rec.position, reflected + fuzz * Random::random_in_unit_sphere());
+		scattered_ray_out.origin = rec.position;
+		scattered_ray_out.direction = reflected + fuzz * Random::random_in_unit_sphere();
 		attenuation = albedo;
 #else
-		scattered_ray_out = Ray(rec.position, reflected);
-		attenuation = albedo * (1.0 - fuzz);
+		scattered_ray_out.origin = rec.position;
+		scattered_ray_out.direction = reflected;
 #endif
+		scattered_ray_out.origin = scattered_ray_out.direction.dot(rec.normal) < 0
+			                           ? scattered_ray_out.origin - rec.normal * 0.001
+			                           : scattered_ray_out.origin + rec.normal * 0.001;
+
 
 		return (scattered_ray_out.direction.dot(rec.normal) > 0);
 	}
@@ -103,12 +110,20 @@ public:
 		else
 			reflect_prob = 1.0;
 
+		scattered_ray_out.origin = rec.position;
+
 #ifdef PATH_TRACING
 		if (Random::randf(0, 1) < reflect_prob)
-			scattered_ray_out = Ray(rec.position, reflected);
+			scattered_ray_out.direction = reflected;
 		else
 #endif
-		scattered_ray_out = Ray(rec.position, refracted);
+			scattered_ray_out.direction = refracted;
+
+		//#ifndef PATH_TRACING
+		scattered_ray_out.origin = scattered_ray_out.direction.dot(rec.normal) < 0
+			                           ? scattered_ray_out.origin - rec.normal * 0.01
+			                           : scattered_ray_out.origin + rec.normal * 0.01;
+		//#endif
 
 		return true;
 	}

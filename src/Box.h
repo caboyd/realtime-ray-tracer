@@ -19,6 +19,12 @@ public:
 		this->mat_ptr = mat;
 	}
 
+	bool bounding_box(float t0, float t1, AABB& b) const override
+	{
+		b = AABB(center - dimensions, center + dimensions);
+		return true;
+	}
+
 	void updateHitRecord(const Vector3& position, int u, int v, const Vector3& normal, float t, Material* mat_ptr,
 	                     HitRecord& rec) const;
 
@@ -130,6 +136,6 @@ void Box::updateHitRecord(const Vector3& position, int u, int v, const Vector3& 
 	rec.normal = normal;
 	rec.t = t;
 	rec.mat_ptr = mat_ptr;
-	rec.u = ((position[u] - center[u]) / dimensions[u] + 1.0) * 0.5;
-	rec.v = ((position[v] - center[v]) / dimensions[v] + 1.0) * 0.5;
+	rec.u = ((position[u] - center[u]) / dimensions[u] + 1.0f) * 0.5f;
+	rec.v = ((position[v] - center[v]) / dimensions[v] + 1.0f) * 0.5f;
 }

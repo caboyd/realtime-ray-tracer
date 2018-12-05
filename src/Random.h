@@ -28,4 +28,7 @@ public:
 	static float randf(std::mt19937& gen, float min, float max);
 	static Vector3 random_in_unit_sphere();
 	static Vector3 random_in_unit_sphere(std::mt19937& gen);
+
+		static Vector3 random_in_unit_disk();
+	static Vector3 random_in_unit_disk(std::mt19937& gen);
 };
