@@ -167,6 +167,7 @@
     <Library Include="lib\SDL2\SDL2main.lib" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Light.h" />
     <ClInclude Include="src\MovingSphere.h" />
     <ClInclude Include="src\AABB.h" />
     <ClInclude Include="src\Box.h" />

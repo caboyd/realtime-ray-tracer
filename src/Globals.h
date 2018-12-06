@@ -3,13 +3,14 @@
 #include "Vector3.h"
 #include "Camera.h"
 #include <vector>
+#include "Light.h"
 
 #define global_extern extern
 
 #define SAMPLING
 #define UNIFORM_SAMPLING
 #define PATH_TRACING
-//#define LAMBERTIAN
+#define BAD_SHADOWS
 
 
 global_extern const int SCREEN_WIDTH;
@@ -28,4 +29,4 @@ global_extern const Vector3 AMBIENT_LIGHT;
 global_extern Camera camera;
 
 
-global_extern std::vector<Vector3> g_lights;
+global_extern std::vector<Light> g_lights;

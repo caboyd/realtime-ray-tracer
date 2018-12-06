@@ -58,6 +58,27 @@ void Vector3::negate()
 	z = -z;
 }
 
+void Vector3::clamp(float min, float max)
+{
+	x = x < min ? min : x > max ? max : x;
+	y = y < min ? min : y > max ? max : y;
+	z = z < min ? min : z > max ? max : z;
+}
+
+void Vector3::clampMax(float max)
+{
+	x = x > max ? max : x;
+	y = y > max ? max : y;
+	z = z > max ? max : z;
+}
+
+void Vector3::clampMin(float min)
+{
+	x = x < min ? min : x;
+	y = y < min ? min : y;
+	z = z < min ? min : z;
+}
+
 bool Vector3::isZero() const
 {
 	if (x != 0.0) return false;;

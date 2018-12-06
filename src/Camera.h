@@ -16,7 +16,7 @@ public:
 	Vector3 w,u,v;
 	float time0, time1;
 
-
+	Camera()= default;
 	Camera(const Vector3& eye, const Vector3& target, const Vector3& up, float vFov, float aspect_ratio, float t0 = 0.f, float t1 = 0.f);
 	Camera(const Vector3& eye, const Vector3& target, const Vector3& up, float vFov, float aspect_ratio, float aperture,
 	       float focus_dist,  float t0 = 0.f, float t1= 0.f);

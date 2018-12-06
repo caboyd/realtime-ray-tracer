@@ -39,7 +39,9 @@ public:
 	void set(float x, float y, float z);
 	void normalize();
 	void negate();
-
+	void clamp(float min, float max);
+	void clampMax(float max);
+	void clampMin(float min);
 
 	//Getters
 	bool isZero() const;
