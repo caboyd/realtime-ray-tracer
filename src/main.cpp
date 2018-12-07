@@ -26,6 +26,11 @@ void generateLightsFromRect(std::vector<Vector3>& lights, float xmin, float xmax
 Hitable* simpleLight();
 Hitable* cornell_box();
 Hitable* cornell_gloss();
+Hitable* cornell_translucency();
+Hitable* cornell_shadow();
+Hitable* cornell_blur();
+Hitable* cornell_dof();
+Hitable* cornell_lambert();
 
 int main(int argc, char** argv)
 {
@@ -47,10 +52,10 @@ int main(int argc, char** argv)
 
 	//Pos, normal, up, vFov, aspect ratio
 	const float vFOV = 40;
-	Vector3 eye(278, 278, 1);
+	Vector3 eye(278, 278, -800);
 	Vector3 target(278, 278, 0);
 
-	camera = Camera({278, 278, -800}, {278, 278, 0}, {0, 1, 0}, vFOV, ASPECT_RATIO, 0.0, 10.0, 0.0, 1);
+	camera = Camera({278, 278, -800}, target, {0, 1, 0}, vFOV, ASPECT_RATIO, 0, (eye-target).length()*2, 0, 1);
 	Hitable* world = cornell_box();
 
 	//camera = Camera({5, 2, 10}, {1, 1,-1}, {0, 1, 0}, vFOV, ASPECT_RATIO);
@@ -91,12 +96,12 @@ int main(int argc, char** argv)
 				v = Random::randf(gen, y, y + 1) ;
 #endif
 #endif
-			u = u / float(SCREEN_WIDTH);
-			v = v / float(SCREEN_HEIGHT);
+					u = u / float(SCREEN_WIDTH);
+					v = v / float(SCREEN_HEIGHT);
 
-			Ray ray = camera.getRay(u, v);
-			//Ray ray = camera.getRay(u, v);
-			color += ray_trace(ray, world, 0);
+					Ray ray = camera.getRay(u, v);
+					//Ray ray = camera.getRay(u, v);
+					color += ray_trace(ray, world, 0);
 
 #ifdef SAMPLING
 				}
@@ -194,18 +199,6 @@ Vector3 ray_trace(const Ray& ray, Hitable* world, int depth)
 			Vector3 color;
 			if (last_rec.mat_ptr->shadowsAllowed())
 			{
-#ifndef PATH_TRACING
-
-				if (dynamic_cast<Dialectric*>(last_rec.mat_ptr))
-				{
-					color = attenuation * ray_trace(ray_out, world, depth + 1);
-					if (last_rec.mat_ptr->reflection(ray, last_rec, attenuation, ray_out))
-						color += attenuation * ray_trace(ray_out, world, depth + 1);
-					return color;
-				}
-
-#endif
-
 				Vector3 diffuse(0);
 				Vector3 specular(0);
 				for (auto&& light : g_lights)
@@ -221,7 +214,10 @@ Vector3 ray_trace(const Ray& ray, Hitable* world, int depth)
 					//Offset bias for acne
 					Ray ray(last_rec.position + last_rec.normal * 0.01, light_dir, ray_out.time);
 					bool in_shadow = (world->hit(ray, 0.001f, light_position.length() * 0.999, rec));
-
+					
+				if (dynamic_cast<Metal*>(last_rec.mat_ptr))
+					diffuse += (1.0f - in_shadow) * light.color * light.power / distance;
+				else
 					diffuse += (1.0f - in_shadow) * dot * light.color * light.power / distance;
 					specular += (1.0f - in_shadow) * last_rec.mat_ptr->getSpecular(camera.position - last_rec.position,
 					                                                               light_position, last_rec.normal,
@@ -232,21 +228,31 @@ Vector3 ray_trace(const Ray& ray, Hitable* world, int depth)
 				diffuse += AMBIENT_LIGHT;
 				diffuse.clamp(0, 1);
 				specular.clamp(0, 100);
-				color = diffuse + specular;
+				color = {};
 
-
-				if (dynamic_cast<Lambertian*>(last_rec.mat_ptr))
-					color = (diffuse + specular + AMBIENT_LIGHT) * attenuation;
-				else if (dynamic_cast<BlinnPhong*>(last_rec.mat_ptr) && !dynamic_cast<BlinnPhong*>(last_rec.mat_ptr)
-					->
-					reflects)
-					color *= attenuation;
+				if (dynamic_cast<Lambertian*>(last_rec.mat_ptr) ||
+					(dynamic_cast<BlinnPhong*>(last_rec.mat_ptr) && !dynamic_cast<BlinnPhong*>(last_rec.mat_ptr)->
+						reflects))
+					color = (diffuse + specular) * attenuation;
+				else if (dynamic_cast<Metal*>(last_rec.mat_ptr))
+					color = (diffuse * attenuation * ray_trace(ray_out, world, depth + 1));
 				else
-					color *= attenuation * ray_trace(ray_out, world, depth + 1);
-
+					color = (diffuse * attenuation) + (specular * attenuation * ray_trace(ray_out, world, depth + 1));
 				return emitted + color;
 			}
+
+						if (dynamic_cast<Dialectric*>(last_rec.mat_ptr))
+			{
+				color = attenuation * ray_trace(ray_out, world, depth + 1);
+				if (last_rec.mat_ptr->reflection(ray, last_rec, attenuation, ray_out))
+					color += attenuation * ray_trace(ray_out, world, depth + 1);
+				return color;
+			}
 #endif
+
+
+
+
 			return emitted + attenuation * ray_trace(ray_out, world, depth + 1);
 		}
 		else
@@ -257,35 +263,19 @@ Vector3 ray_trace(const Ray& ray, Hitable* world, int depth)
 		return AMBIENT_LIGHT;
 }
 
-Hitable* cornell_gloss()
+Hitable* cornell_lambert()
 {
-	Vector3 red_color(.65f, .05f, .05f);
-	Vector3 white_color(0.73f);
-
-	Material* white = new Lambertian(new ConstantTexture({0.73f, 0.73f, 0.73f}));
-	Material* red = new Lambertian(new ConstantTexture({0.65f, 0.05f, 0.05f}));
-	Material* green = new Lambertian(new ConstantTexture({0.12f, 0.45f, 0.15f}));
-	Material* blue = new Lambertian(new ConstantTexture({0.12f, 0.15f, 0.56f}));
+	Material* white = new Lambertian(new ConstantTexture(white_color));
+	Material* red = new Lambertian(new ConstantTexture(red_color));
+	Material* green = new Lambertian(new ConstantTexture(green_color));
+	Material* blue = new Lambertian(new ConstantTexture(blue_color));
 
 	Material* light = new DiffuseLight(new ConstantTexture({60, 60, 60}));
 
-	Material* mirror = new Metal({0.95f, 0.95f, 0.95f}, 0.2f);
-	Material* perfectMirror = new Metal({1.f, 1.f, 1.f}, 0.f);
-
-#if 0
-	Material* redFuzzy = new BlinnPhong({0.65f, 0.05f, 0.05f}, Vector3(1), 32, true, 0.2f);
-	Material* greenFuzzy = new BlinnPhong({0.12f, 0.45f, 0.15f}, Vector3(1), 32, true, 0.2f);
-	Material* blueFuzzy = new BlinnPhong({0.12f, 0.15f, 0.56f}, Vector3(1), 32, true, 0.2f);
-#else
-	Material* redFuzzy = new Metal({0.65f, 0.05f, 0.05f}, 0.2f);
-	Material* greenFuzzy = new Metal({0.12f, 0.45f, 0.15f}, 0.2f);
-	Material* blueFuzzy = new Metal({0.12f, 0.15f, 0.56f}, 0.2f);
-#endif
+	g_lights.emplace_back(Vector3(50, 50, 0), Vector3(0, 0, 0), Vector3(1), Vector3(300));
 
 	Hitable** list = new Hitable*[11];
 	int i = 0;
-
-	g_lights.emplace_back(Vector3(50, 50, 0), Vector3(0), Vector3(1), Vector3(300));
 
 	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, red));
 	list[i++] = new YZRect(0, 555, 0, 555, 0, green);
@@ -294,7 +284,193 @@ Hitable* cornell_gloss()
 	list[i++] = new XZRect(0, 555, 0, 555, 0, white);
 	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, white));
 	//list[i++] = new XYRect(0, 555, 0, 555, 0, mirror);
-	list[i++] = new XYRect(0, 70, 0, 70, 0, light);
+	list[i++] = new XYRect(0, 50, 0, 50, 0, light);
+
+	list[i++] = new Sphere({168, 388, 278}, 100, white);
+	list[i++] = new Sphere({168, 168, 278}, 100, red);
+	list[i++] = new Sphere({388, 388, 278}, 100, green);
+	list[i++] = new Sphere({388, 168, 278}, 100, blue);
+
+	return new HitableList(list, i);
+}
+
+Hitable* cornell_gloss()
+{
+	Material* white = new Lambertian(new ConstantTexture(white_color));
+	Material* red = new Lambertian(new ConstantTexture(red_color));
+	Material* green = new Lambertian(new ConstantTexture(green_color));
+	Material* blue = new Lambertian(new ConstantTexture(blue_color));
+
+	Material* light = new DiffuseLight(new ConstantTexture({60, 60, 60}));
+
+	Material* mirror = new Metal({0.95f, 0.95f, 0.95f}, 0.2f);
+	Material* perfectMirror = new Metal({1.f, 1.f, 1.f}, 0.f);
+
+#if 1
+	bool reflect = true;
+	float blur = 0.4f;
+	Material* whiteFuzzy = new BlinnPhong(white_color, Vector3(1), 64, reflect, blur);
+	Material* redFuzzy = new BlinnPhong(red_color, Vector3(1), 64, reflect, blur);
+	Material* greenFuzzy = new BlinnPhong(green_color, Vector3(1), 64, reflect, blur);
+	Material* blueFuzzy = new BlinnPhong(blue_color, Vector3(1), 64, reflect, blur);
+#else
+	float blur = 0.3f;
+	Material* whiteFuzzy = new Metal(white_color, blur);
+	Material* redFuzzy = new Metal(red_color,blur);
+	Material* greenFuzzy = new Metal(green_color,blur);
+	Material* blueFuzzy = new Metal(blue_color,blur);
+#endif
+	g_lights.emplace_back(Vector3(50, 50, 0), Vector3(0, 0, 0), Vector3(1), Vector3(300));
+
+
+	Hitable** list = new Hitable*[11];
+	int i = 0;
+
+
+	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, red));
+	list[i++] = new YZRect(0, 555, 0, 555, 0, green);
+	list[i++] = new FlipNormals(new XZRect(0, 555, 0, 555, 555, white));
+	//floor
+	list[i++] = new XZRect(0, 555, 0, 555, 0, white);
+	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, white));
+	//list[i++] = new XYRect(0, 555, 0, 555, 0, mirror);
+	list[i++] = new XYRect(0, 50, 0, 50, 0, light);
+
+	list[i++] = new Sphere({168, 388, 278}, 100, whiteFuzzy);
+	list[i++] = new Sphere({168, 168, 278}, 100, redFuzzy);
+	list[i++] = new Sphere({388, 388, 278}, 100, greenFuzzy);
+	list[i++] = new Sphere({388, 168, 278}, 100, blueFuzzy);
+
+	return new HitableList(list, i);
+}
+
+Hitable* cornell_dof()
+{
+	Material* whiteWall = new Lambertian(new ConstantTexture(white_color));
+	Material* redWall = new Lambertian(new ConstantTexture(red_color));
+	Material* greenWall = new Lambertian(new ConstantTexture(green_color));
+	Material* light = new DiffuseLight(new ConstantTexture({60, 60, 60}));
+
+	g_lights.emplace_back(Vector3(25, 25, 0), Vector3(0, 0, 0), Vector3(1), Vector3(300));
+
+	Hitable** list = new Hitable*[11];
+	int i = 0;
+
+	Material* white = new BlinnPhong(white_color, Vector3(1), 64, false, 0.f);
+	Material* red = new BlinnPhong(red_color, Vector3(1), 64, false, 0.f);
+	Material* blue = new BlinnPhong(blue_color, Vector3(1), 64, false, 0.f);
+
+	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, redWall));
+	list[i++] = new YZRect(0, 555, 0, 555, 0, greenWall);
+	list[i++] = new FlipNormals(new XZRect(0, 555, 0, 555, 555, whiteWall));
+	//floor
+	list[i++] = new XZRect(0, 555, 0, 555, 0, whiteWall);
+	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, whiteWall));
+	list[i++] = new XYRect(0, 50, 0, 50, 0, light);
+
+	list[i++] = new Sphere({278,278,278},80, white);
+	list[i++] = new Sphere({378,278,400},80,red);
+	list[i++] = new Sphere({198,278,100},80, blue);
+
+	return new HitableList(list, i);
+}
+
+
+Hitable* cornell_blur()
+{
+	Material* whiteWall = new Lambertian(new ConstantTexture(white_color));
+	Material* redWall = new Lambertian(new ConstantTexture(red_color));
+	Material* greenWall = new Lambertian(new ConstantTexture(green_color));
+	Material* light = new DiffuseLight(new ConstantTexture({60, 60, 60}));
+
+	g_lights.emplace_back(Vector3(25, 25, 0), Vector3(0, 0, 0), Vector3(1), Vector3(300));
+
+	Hitable** list = new Hitable*[11];
+	int i = 0;
+
+	Material* white = new BlinnPhong(white_color, Vector3(1), 64, false, 0.f);
+	Material* red = new BlinnPhong(red_color, Vector3(1), 64, false, 0.f);
+	Material* blue = new BlinnPhong(blue_color, Vector3(1), 64, false, 0.f);
+
+	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, redWall));
+	list[i++] = new YZRect(0, 555, 0, 555, 0, greenWall);
+	list[i++] = new FlipNormals(new XZRect(0, 555, 0, 555, 555, whiteWall));
+	//floor
+	list[i++] = new XZRect(0, 555, 0, 555, 0, whiteWall);
+	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, whiteWall));
+	list[i++] = new XYRect(0, 50, 0, 50, 0, light);
+#if 0
+	list[i++] = new MovingSphere({238,140,238},{288,80,188},0,1,80, white);
+	list[i++] = new MovingSphere({428,120,228},{428,80,228},0,1,80, red);
+	list[i++] = new MovingSphere({128,120,228},{128,80,328},0,1,80, blue);
+#else
+	list[i++] = new Sphere({288,80,188},80, white);
+	list[i++] = new Sphere({428,80,228},80,red);
+	list[i++] = new Sphere({128,80,328},80, blue);
+#endif
+	return new HitableList(list, i);
+}
+
+
+Hitable* cornell_shadow()
+{
+			Material* checker = new Lambertian(new CheckerTexture(new ConstantTexture({0.12f, 0.45f, 0.15f}),
+	                                                      new ConstantTexture({0.73f, 0.73f, 0.73f}), 0.1f));
+	Material* whiteWall = new Lambertian(new ConstantTexture(white_color));
+	Material* redWall = new Lambertian(new ConstantTexture(red_color));
+	Material* greenWall = new Lambertian(new ConstantTexture(green_color));
+	Material* light = new DiffuseLight(new ConstantTexture({60, 60, 60}));
+
+	g_lights.emplace_back(Vector3(25, 25, 0), Vector3(0, 0, 0), Vector3(1), Vector3(300));
+
+	Hitable** list = new Hitable*[11];
+	int i = 0;
+
+	Material* white = new BlinnPhong(white_color, Vector3(1), 64, false, 0.f);
+	Material* red = new BlinnPhong(red_color, Vector3(1), 64, false, 0.f);
+
+	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, redWall));
+	list[i++] = new YZRect(0, 555, 0, 555, 0, greenWall);
+	list[i++] = new FlipNormals(new XZRect(0, 555, 0, 555, 555, whiteWall));
+	//floor
+	list[i++] = new XZRect(0, 555, 0, 555, 0, whiteWall);
+	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, checker));
+	list[i++] = new XYRect(0, 50, 0, 50, 0, light);
+
+	
+	list[i++] = new Sphere({308, 188, 278}, 80, red);
+	list[i++] = new Box({178, 100, 178}, {50, 200, 50}, white);
+	return new HitableList(list, i);
+}
+
+Hitable* cornell_translucency()
+{
+	Material* checker = new Lambertian(new CheckerTexture(new ConstantTexture({0.12f, 0.45f, 0.15f}),
+	                                                      new ConstantTexture({0.73f, 0.73f, 0.73f}), 0.1f));
+	Material* whiteWall = new Lambertian(new ConstantTexture(white_color));
+	Material* redWall = new Lambertian(new ConstantTexture(red_color));
+	Material* greenWall = new Lambertian(new ConstantTexture(green_color));
+	Material* light = new DiffuseLight(new ConstantTexture({60, 60, 60}));
+
+	float blur = 0.0f;
+	float ref = 1.5f;
+	Material* white = new Dialectric(white_color, ref, blur);
+	Material* red = new Dialectric(red_color, ref, blur);
+	Material* green = new Dialectric(green_color, ref, blur);
+	Material* blue = new Dialectric(blue_color, ref, blur);
+
+	g_lights.emplace_back(Vector3(50, 50, 0), Vector3(0, 0, 0), Vector3(1), Vector3(300));
+
+	Hitable** list = new Hitable*[11];
+	int i = 0;
+
+	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, redWall));
+	list[i++] = new YZRect(0, 555, 0, 555, 0, greenWall);
+	list[i++] = new FlipNormals(new XZRect(0, 555, 0, 555, 555, whiteWall));
+	//floor
+	list[i++] = new XZRect(0, 555, 0, 555, 0, whiteWall);
+	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, checker));
+	list[i++] = new XYRect(0, 50, 0, 50, 0, light);
 
 	list[i++] = new Sphere({168, 388, 278}, 100, white);
 	list[i++] = new Sphere({168, 168, 278}, 100, red);
@@ -323,26 +499,18 @@ Hitable* simpleLight()
 
 Hitable* cornell_box()
 {
-	Vector3 red_color(.65f, .05f, .05f);
-	Vector3 white_color(0.73f);
-	Vector3 blue_color(.12f, .15f, .56f);
-
 	Material* white = new Lambertian(new ConstantTexture({0.73f, 0.73f, 0.73f}));
-	Material* whiteFuzzy = new Metal({0.73f, 0.73f, 0.73f}, 0.5f);
 	Material* red = new Lambertian(new ConstantTexture({0.65f, 0.05f, 0.05f}));
-
-	Material* redFuzzy = new Metal({0.65f, 0.05f, 0.05f}, 0.95f);
 	Material* green = new Lambertian(new ConstantTexture({0.12f, 0.45f, 0.15f}));
-	Material* greenFuzzy = new Metal({0.12f, 0.45f, 0.15f}, 0.95f);
-	Material* blue = new Lambertian(new ConstantTexture({0.12f, 0.15f, 0.56f}));
 	Material* light = new DiffuseLight(new ConstantTexture({15, 15, 15}));
-	Material* light2 = new DiffuseLight(new ConstantTexture({2, 2, 2}));
+		Material* light2 = new DiffuseLight(new ConstantTexture({2, 2, 2}));
 	Material* checker = new Lambertian(new CheckerTexture(new ConstantTexture({0.12f, 0.45f, 0.15f}),
-	                                                      new ConstantTexture({0.73f, 0.73f, 0.73f}), 0.05f));
+	                                                      new ConstantTexture({0.73f, 0.73f, 0.73f}), 0.1f));
 
 	Material* mirror = new Metal(white_color, 0.3f);
 	Material* metal = new Metal(white_color, 0.3f);
 	Material* dialectric = new Dialectric(white_color, 1.5);
+
 	Material* blinn = new BlinnPhong(red_color, Vector3(1), 128, false, 1.f);
 
 	Hitable** list = new Hitable*[11];
@@ -364,14 +532,12 @@ Hitable* cornell_box()
 	//list[i++] = new XYRect(0, 555, 0, 555, 0, mirror);
 
 	list[i++] = new Sphere({450, 80, 250}, 75, dialectric);
-	list[i++] = new Sphere({450, 80, 250}, -74, dialectric);
 #ifdef PATH_TRACING
-	list[i++] = new MovingSphere({105, 80, 250}, {105, 160, 250}, 0.f, 1.f, 75, blinn);
+	list[i++] = new MovingSphere({105, 80, 250}, {105, 160, 250}, 0.f, 1.f, 75, red);
 #else
 	list[i++] = new Sphere({105, 80, 250}, 75, blinn);
 #endif
-	//list[i++] = new Sphere({450, 80, 250}, -70, dialectric);
-	//list[i++] = new Box({278, 70, 450}, {240, 140, 140}, checker);
+	list[i++] = new Box({475, 75, 450}, {100, 150, 100}, checker);
 	list[i++] = new Sphere({278, 20, 278}, 80, metal);
 
 	//return new BVHNode(list, i, 0, 0);

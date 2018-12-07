@@ -22,8 +22,8 @@ public:
 
 	Vector3 getRandomLightPoint() const
 	{
-		return Vector3(center.x + Random::randf(-dimensions.x, dimensions.x),
-		               center.y + Random::randf(-dimensions.y, dimensions.y),
-		               center.z + Random::randf(-dimensions.z, dimensions.z));
+		return Vector3(center.x + Random::randf(-dimensions.x/2, dimensions.x/2),
+		               center.y + Random::randf(-dimensions.y/2, dimensions.y/2),
+		               center.z + Random::randf(-dimensions.z/2, dimensions.z/2));
 	}
 };

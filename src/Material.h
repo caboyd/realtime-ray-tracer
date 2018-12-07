@@ -129,12 +129,12 @@ public:
 		scattered_ray_out.direction = reflected + fuzz * Random::random_in_unit_sphere();
 #endif
 
-		scattered_ray_out.origin = scattered_ray_out.direction.dot(rec.normal) < 0
-			                           ? scattered_ray_out.origin - rec.normal * 0.001
-			                           : scattered_ray_out.origin + rec.normal * 0.001;
+		// scattered_ray_out.origin = scattered_ray_out.direction.dot(rec.normal) < 0
+		// 	                           ? scattered_ray_out.origin - rec.normal * 0.001
+		// 	                           : scattered_ray_out.origin + rec.normal * 0.001;
 
 
-		return (scattered_ray_out.direction.dot(rec.normal) > 0);
+		return (reflected.dot(rec.normal) > 0);
 	}
 
 	Vector3 getSpecular(const Vector3& view_dir, const Vector3& relative_light_pos, const Vector3& normal,
@@ -157,13 +157,17 @@ class Dialectric : public Material
 {
 public:
 	float ref_idx;
+	float blur;
 	Vector3 albedo;
 
-	Dialectric(const Vector3& a, float ri) : albedo(a), ref_idx(ri)
+	Dialectric(const Vector3& a, float ri, float blur = 0.f) : albedo(a), ref_idx(ri), blur(blur)
 	{
 	}
 
-	bool shadowsAllowed() const override { return true; }
+	bool shadowsAllowed() const override
+	{
+		return false;
+	}
 
 	bool reflection(const Ray& ray_in, const HitRecord& rec, Vector3& attenuation,
 	                Ray& scattered_ray_out) const override
@@ -239,12 +243,10 @@ public:
 			attenuation = albedo;
 			scattered_ray_out.direction = reflected;
 		}
-
 		else
-#endif
+			scattered_ray_out.direction = refracted + blur * Random::random_in_unit_sphere();
+#else
 		scattered_ray_out.direction = refracted;
-
-#ifndef PATH_TRACING
 		attenuation = Vector3(1.0 - reflect_prob);
 		scattered_ray_out.origin = scattered_ray_out.direction.dot(rec.normal) < 0
 			                           ? scattered_ray_out.origin - rec.normal * 0.01

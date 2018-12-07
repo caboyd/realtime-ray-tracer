@@ -30,3 +30,8 @@ global_extern Camera camera;
 
 
 global_extern std::vector<Light> g_lights;
+
+global_extern const Vector3 red_color;
+global_extern const Vector3 blue_color;
+global_extern const Vector3 green_color;
+global_extern const Vector3 white_color;
