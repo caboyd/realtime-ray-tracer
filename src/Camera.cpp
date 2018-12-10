@@ -2,30 +2,19 @@
 #include <iostream>
 #include "Math.h"
 #include "Random.h"
+#include "Quat.h"
 
 constexpr float M_PI = 3.141592653589793238462643383279502884f; /* pi */
+
+using std::cout;
+using std::endl;
 
 //constructor(eye: vec3, target: vec3, up: vec3, vFov: number, aspect: number, aperture: number, focus_dist: number)
 Camera::Camera(const Vector3& eye, const Vector3& target, const Vector3& up, float vFov, float aspect_ratio, float t0,
                float t1)
 {
-	time0 = t0;
-	time1 = t1;
-	//Convert to radius
-	float theta = (vFov * M_PI) / 180.0f;
-	float half_height = tan(theta / 2);
-	float half_width = aspect_ratio * half_height;
-
-	position = eye;
-	this->normal = (target - eye).getNormalized();
-	Vector3 target_to_eye = (eye - target).getNormalized();
-	Vector3 right = up.cross(target_to_eye).getNormalized();
-	Vector3 actual_up = target_to_eye.cross(right);
-
-	lower_left_corner = this->position - half_width * right - half_height * actual_up - target_to_eye;
-
-	screen_horizontal = right * 2 * half_width;
-	screen_vertical = actual_up * 2 * half_height;
+	Camera(eye, target, up, vFov, aspect_ratio,
+	       0.0f, 10.f, t0, t1);
 }
 
 Camera::Camera(const Vector3& eye, const Vector3& target, const Vector3& up, float vFov, float aspect_ratio,
@@ -34,42 +23,25 @@ Camera::Camera(const Vector3& eye, const Vector3& target, const Vector3& up, flo
 	time0 = t0;
 	time1 = t1;
 	lens_radius = aperture / 2.f;
+	this->focus_dist = focus_dist;
 	//Convert to radians
 	float theta = (vFov * M_PI) / 180.0f;
-	float half_height = tan(theta / 2);
-	float half_width = aspect_ratio * half_height;
+	half_height = tan(theta / 2);
+	half_width = aspect_ratio * half_height;
 
 	position = eye;
 	this->normal = (target - eye).getNormalized();
-	Vector3 target_to_eye = w = (eye - target).getNormalized();
-	Vector3 right = u = up.cross(target_to_eye).getNormalized();
-	Vector3 actual_up = v = target_to_eye.cross(right);
 
-	lower_left_corner =
-		this->position
-		- half_width * focus_dist * right
-		- half_height * focus_dist * actual_up
-		- focus_dist * target_to_eye;
+	this->pitch = -asin(this->normal.y);
+	this->heading = -(atan2(normal.x, normal.z));
+	world_right = Vector3(1, 0, 0);
+	world_up = Vector3(0, 1, 0);
 
-	screen_horizontal = right * 2 * focus_dist * half_width;
-	screen_vertical = actual_up * 2 * focus_dist * half_height;
+	this->orientation = Quat::fromIdentity();
+
+	calculateOrientation();
 }
 
-// Camera::Camera(const Vector3& eye, const Vector3& target, const Vector3& up, float focal_length_mm, float film_size_mm,
-//                float aspect_ratio)
-// {
-// 	//https://en.wikipedia.org/wiki/Angle_of_view
-// 	//Convert to metres and divide by 2
-// 	float half_height = film_size_mm / 2000;
-// 	float half_width = aspect_ratio * film_size_mm / 2000;
-// 	float f = focal_length_mm / 1000;
-//
-// 	position = eye;
-// 	this->normal = (target - eye).getNormalized();
-// 	screen_horizontal = Vector3(1, 0, 0) * 2 * half_width;
-// 	screen_vertical = Vector3(0, 1, 0) * 2 * half_height;
-// 	lower_left_corner = Vector3(-half_width, -half_height, -f);
-// }
 
 Ray Camera::getRay(float x, float y) const
 {
@@ -129,4 +101,80 @@ Mat4 Camera::getViewMatrixInverse() const
 
 	//4x4 Matrix Multiplication
 	return T_inv * R_inv;
+}
+
+Vector3 Camera::getForward() const
+{
+	Quat q = orientation.conjugate();
+	Vector3 result(0, 0, -1);
+	result.transformQuat(q);
+	return result;
+}
+
+Vector3 Camera::getRight() const
+{
+	Quat q = orientation.conjugate();
+	Vector3 result(1, 0, 0);
+	result.transformQuat(q);
+	return result;
+}
+
+Vector3 Camera::getUp() const
+{
+	Quat q = orientation.conjugate();
+	Vector3 result(0, 1, 0);
+	result.transformQuat(q);
+	return result;
+}
+
+void Camera::processMouseMovement(int x_offset, int y_offset, bool constrain_pitch)
+
+{
+	if (x_offset == 0 && y_offset == 0) return;
+
+
+	this->heading += x_offset * SENSITIVITY;
+	if (this->heading > 2 * M_PI) this->heading -= 2 * M_PI;
+	if (this->heading < 0) this->heading += 2 * M_PI;
+
+	this->pitch += y_offset * SENSITIVITY;
+	if (this->pitch > M_PI) this->pitch -= 2 * M_PI;
+	if (this->pitch < -M_PI) this->pitch += 2 * M_PI;
+
+	if (constrain_pitch)
+	{
+		if (this->pitch > M_PI / 2) this->pitch = M_PI / 2;
+		if (this->pitch < -M_PI / 2) this->pitch = -M_PI / 2;
+	}
+
+	//cout << heading << "  " << pitch << endl;
+
+	calculateOrientation();
+}
+
+void Camera::calculateOrientation()
+{
+	Quat pitch_quat = Quat::fromAxisAngle(this->world_right, this->pitch);
+	Quat heading_quat = Quat::fromAxisAngle(this->world_up, this->heading);
+
+	this->orientation.indentity();
+
+	this->orientation = this->orientation * pitch_quat;
+
+	this->orientation = this->orientation * heading_quat;
+
+	Vector3 forward = w = getForward();
+	Vector3 right = u = getRight();
+	Vector3 actual_up = v = getUp();
+
+	lower_left_corner =
+		this->position
+		- half_width * focus_dist * right
+		- half_height * focus_dist * actual_up
+		- focus_dist * forward;
+
+cout<< right <<endl;
+
+	screen_horizontal = right * 2 * focus_dist * half_width;
+	screen_vertical = actual_up * 2 * focus_dist * half_height;
 }

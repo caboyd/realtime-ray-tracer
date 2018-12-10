@@ -1,7 +1,7 @@
 #pragma once
-
-#include "AABB.h"
 #include "HitRecord.h"
+#include "Ray.h"
+class AABB;
 
 
 //An abstract hittable object that is inherited so hittable objects

@@ -5,6 +5,7 @@
 #include "Random.h"
 #include "Ray.h"
 #include "Texture.h"
+#include "Globals.h"
 
 inline Vector3 reflect(const Vector3& v, const Vector3& n);
 inline bool refract(const Vector3& v, const Vector3& n, float ni_over_nt, Vector3& refracted);
@@ -16,15 +17,10 @@ public:
 	virtual ~Material() = default;
 	virtual bool scatter(const Ray& ray_in, const HitRecord& rec, Vector3& attenuation,
 	                     Ray& scattered_ray_out) const = 0;
-	virtual Vector3 emitted(float u, float v, const Vector3& p) const { return Vector3::ZERO; }
+	virtual bool scatterTwo(const Ray& ray_in, const HitRecord& rec, Vector3& attenuation,
+	                     Ray& scattered_ray_out) const { return false; }
 
-	virtual Vector3 getSpecular(const Vector3& view_dir, const Vector3& relative_light_pos, const Vector3& normal,
-	                            const Vector3& light_color, const Vector3& light_power) const
-	{
-		return Vector3(0);
-	}
-
-	virtual bool shadowsAllowed() const = 0;
+	virtual Vector3 emitted(const Ray& ray, const HitRecord& rec) const { return Vector3::ZERO; }
 
 	virtual bool reflection(const Ray& ray_in, const HitRecord& rec, Vector3& attenuation, Ray& scattered_ray_out) const
 	{
@@ -43,114 +39,15 @@ public:
 
 	bool scatter(const Ray& ray_in, const HitRecord& rec, Vector3& attenuation, Ray& scattered_ray_out) const override
 	{
-#ifdef PATH_TRACING
-		const Vector3 out_direction = rec.normal + Random::random_in_unit_sphere();
-#else
-		const Vector3 out_direction = rec.normal;
-#endif
+		const Vector3 out_direction = rec.normal + Random::random_in_unit_sphere();	
 		scattered_ray_out.time = ray_in.time;
 		scattered_ray_out.origin = rec.position;
 		scattered_ray_out.direction = out_direction;
-		attenuation = albedo->value(0, 0, rec.position);
+		attenuation = albedo->value(rec.u,rec.v, rec.position);
 		return true;
 	}
-
-	bool shadowsAllowed() const override { return true; }
 };
 
-
-class Metal : public Material
-{
-public:
-	Vector3 albedo;
-	float fuzz;
-
-	Metal(const Vector3& a, float f) : albedo(a)
-	{
-		if (f < 1) fuzz = f;
-		else fuzz = 1;
-	}
-
-	bool scatter(const Ray& ray_in, const HitRecord& rec, Vector3& attenuation, Ray& scattered_ray_out) const override
-	{
-		scattered_ray_out.time = ray_in.time;
-		Vector3 reflected = reflect(ray_in.direction.getNormalized(), rec.normal);
-		attenuation = albedo;
-#ifdef PATH_TRACING
-		scattered_ray_out.origin = rec.position;
-		scattered_ray_out.direction = reflected + fuzz * Random::random_in_unit_sphere();
-
-#else
-		scattered_ray_out.origin = rec.position;
-		scattered_ray_out.direction = reflected;
-#endif
-		scattered_ray_out.origin = scattered_ray_out.direction.dot(rec.normal) < 0
-			                           ? scattered_ray_out.origin - rec.normal * 0.001
-			                           : scattered_ray_out.origin + rec.normal * 0.001;
-
-
-		return (scattered_ray_out.direction.dot(rec.normal) > 0);
-	}
-
-	bool shadowsAllowed() const override { return true; }
-};
-
-class BlinnPhong : public Material
-{
-public:
-	Vector3 kd;
-	Vector3 ks;
-	float n;
-	bool reflects;
-	float fuzz;
-
-	BlinnPhong()
-	{
-	}
-
-	BlinnPhong(Vector3 diffuse, Vector3 specular, float specular_exponent, bool reflects, float fuzz)
-	{
-		kd = diffuse;
-		ks = specular;
-		n = specular_exponent;
-		this->reflects = reflects;
-		this->fuzz = fuzz;
-	}
-
-	bool scatter(const Ray& ray_in, const HitRecord& rec, Vector3& attenuation, Ray& scattered_ray_out) const override
-	{
-		scattered_ray_out.time = ray_in.time;
-		Vector3 reflected = reflect(ray_in.direction.getNormalized(), rec.normal);
-		attenuation = kd;
-
-		scattered_ray_out.origin = rec.position;
-		scattered_ray_out.direction = reflected;
-#ifdef PATH_TRACING
-		scattered_ray_out.direction = reflected + fuzz * Random::random_in_unit_sphere();
-#endif
-
-		// scattered_ray_out.origin = scattered_ray_out.direction.dot(rec.normal) < 0
-		// 	                           ? scattered_ray_out.origin - rec.normal * 0.001
-		// 	                           : scattered_ray_out.origin + rec.normal * 0.001;
-
-
-		return (reflected.dot(rec.normal) > 0);
-	}
-
-	Vector3 getSpecular(const Vector3& view_dir, const Vector3& relative_light_pos, const Vector3& normal,
-	                    const Vector3& light_color, const Vector3& light_power) const override
-	{
-		float distance_to_light = relative_light_pos.length();
-		Vector3 half = (view_dir.getNormalized() + relative_light_pos.getNormalized()).getNormalized();
-
-		float NdotH = normal.dot(half);
-
-		Vector3 specular = ks * light_color * pow(std::max(0.f, NdotH), n) * light_power / distance_to_light;
-		return specular;
-	}
-
-	bool shadowsAllowed() const override { return true; }
-};
 
 
 class Dialectric : public Material
@@ -162,11 +59,6 @@ public:
 
 	Dialectric(const Vector3& a, float ri, float blur = 0.f) : albedo(a), ref_idx(ri), blur(blur)
 	{
-	}
-
-	bool shadowsAllowed() const override
-	{
-		return false;
 	}
 
 	bool reflection(const Ray& ray_in, const HitRecord& rec, Vector3& attenuation,
@@ -201,8 +93,8 @@ public:
 		scattered_ray_out.origin = rec.position;
 		scattered_ray_out.direction = reflected;
 		scattered_ray_out.origin = scattered_ray_out.direction.dot(rec.normal) < 0
-			                           ? scattered_ray_out.origin - rec.normal * 0.01
-			                           : scattered_ray_out.origin + rec.normal * 0.01;
+			                           ? scattered_ray_out.origin - rec.normal * 0.01f
+			                           : scattered_ray_out.origin + rec.normal * 0.01f;
 
 		return (scattered_ray_out.direction.dot(rec.normal) > 0);
 	}
@@ -247,10 +139,10 @@ public:
 			scattered_ray_out.direction = refracted + blur * Random::random_in_unit_sphere();
 #else
 		scattered_ray_out.direction = refracted;
-		attenuation = Vector3(1.0 - reflect_prob);
+		attenuation = Vector3(1.0f - reflect_prob);
 		scattered_ray_out.origin = scattered_ray_out.direction.dot(rec.normal) < 0
-			                           ? scattered_ray_out.origin - rec.normal * 0.01
-			                           : scattered_ray_out.origin + rec.normal * 0.01;
+			                           ? scattered_ray_out.origin - rec.normal * 0.01f
+			                           : scattered_ray_out.origin + rec.normal * 0.01f;
 #endif
 
 		return true;
@@ -267,16 +159,14 @@ public:
 	{
 	}
 
-	bool shadowsAllowed() const override { return false; }
-
 	bool scatter(const Ray& ray_in, const HitRecord& rec, Vector3& attenuation, Ray& scattered_ray_out) const override
 	{
 		return false;
 	}
 
-	Vector3 emitted(float u, float v, const Vector3& p) const override
+	Vector3 emitted(const Ray& ray, const HitRecord& rec) const override
 	{
-		return emit->value(u, v, p);
+		return emit->value(rec.u, rec.v, rec.position);
 	}
 };
 

@@ -1,6 +1,7 @@
 #pragma once
 #include <ostream>
 
+class Quat;
 
 class Vector3
 {
@@ -42,6 +43,7 @@ public:
 	void clamp(float min, float max);
 	void clampMax(float max);
 	void clampMin(float min);
+	void mix(const Vector3& other, float blend);
 
 	//Getters
 	bool isZero() const;
@@ -51,6 +53,8 @@ public:
 	float distance(const Vector3& v) const;
 	float distanceSquared(const Vector3& v) const;
 	int getLargestComponentIndex()const;
+
+	void transformQuat(const Quat& quat);
 
 	//Negation
 	Vector3 operator-() const;

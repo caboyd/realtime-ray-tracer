@@ -1,4 +1,5 @@
 #include "Vector3.h"
+#include "Quat.h"
 #include <cassert>
 
 
@@ -79,6 +80,13 @@ void Vector3::clampMin(float min)
 	z = z < min ? min : z;
 }
 
+void Vector3::mix(const Vector3& other, float blend)
+{
+	x = other.x * blend + x * (1.0f - blend);
+	y = other.y * blend + y * (1.0f - blend);
+	z = other.z * blend + z * (1.0f - blend);
+}
+
 bool Vector3::isZero() const
 {
 	if (x != 0.0) return false;;
@@ -127,6 +135,24 @@ int Vector3::getLargestComponentIndex() const
 	if (a_z >= a_y && a_z >= a_x) return 2;
 	assert(false);
 	return 0;
+}
+
+void Vector3::transformQuat(const Quat& q)
+{
+	Vector3 qvec = Vector3(q.x,q.y,q.z);
+	Vector3 uv(q.y * z - q.z * y, q.z * x - q.x * z, q.x * y - q.y * x);
+
+	//Vector3 uv = qvec.cross(*this);
+	//Vector3 uuv = qvec.cross(uv);
+
+	Vector3 uuv(q.y * uv.z - q.z * uv.y, q.z * uv.x - q.x * uv.z, q.x * uv.y - q.y * uv.x);
+
+	float w2 = q.w * 2;
+
+	uv *= w2;
+	uuv *= 2;
+
+	*this += uv  + uuv;
 }
 
 Vector3 Vector3::operator-() const

@@ -159,6 +159,7 @@
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\Mat4.cpp" />
     <ClCompile Include="src\Math.cpp" />
+    <ClCompile Include="src\Quat.cpp" />
     <ClCompile Include="src\Random.cpp" />
     <ClCompile Include="src\Vector3.cpp" />
   </ItemGroup>
@@ -167,7 +168,9 @@
     <Library Include="lib\SDL2\SDL2main.lib" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\BlinnPhong.h" />
     <ClInclude Include="src\Light.h" />
+    <ClInclude Include="src\Metal.h" />
     <ClInclude Include="src\MovingSphere.h" />
     <ClInclude Include="src\AABB.h" />
     <ClInclude Include="src\Box.h" />
@@ -182,6 +185,7 @@
     <ClInclude Include="src\Math.h" />
     <ClInclude Include="src\PerformanceCounter.h" />
     <ClInclude Include="src\Polygon.h" />
+    <ClInclude Include="src\Quat.h" />
     <ClInclude Include="src\Random.h" />
     <ClInclude Include="src\Ray.h" />
     <ClInclude Include="src\Sphere.h" />

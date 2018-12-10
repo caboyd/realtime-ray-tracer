@@ -1,6 +1,5 @@
 #include <iostream>
 #include "SDL2/SDL.h"
-#include "Globals.h"
 #include "Random.h"
 #include "Sphere.h"
 #include "HitableList.h"
@@ -8,10 +7,11 @@
 #include "Box.h"
 #include "PerformanceCounter.h"
 #include "Polygon.h"
-#include <omp.h>
 #include "XYRect.h"
-#include "BVHNode.h"
 #include "MovingSphere.h"
+#include "Metal.h"
+#include "BlinnPhong.h"
+#include "Globals.h"
 
 using std::cout;
 using std::endl;
@@ -19,9 +19,7 @@ using std::endl;
 Uint32 rgba_to_uint32(Uint8 r, Uint8 g, Uint8 b, Uint8 a);
 Uint32 vector3_to_uint32(const Vector3& color, float alpha = 1);
 Vector3 ray_trace(const Ray& ray, Hitable* world, int depth);
-Vector3 random_in_unit_sphere();
-void generateLightsFromRect(std::vector<Vector3>& lights, float xmin, float xmax, float ymin, float ymax, float zmin,
-                            float zmax, float step_size);
+
 
 Hitable* simpleLight();
 Hitable* cornell_box();
@@ -31,6 +29,9 @@ Hitable* cornell_shadow();
 Hitable* cornell_blur();
 Hitable* cornell_dof();
 Hitable* cornell_lambert();
+
+void setupCornellWalls(Hitable** list, int& i);
+
 
 int main(int argc, char** argv)
 {
@@ -43,6 +44,10 @@ int main(int argc, char** argv)
 	SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, 0);
 	SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC, SCREEN_WIDTH,
 	                                         SCREEN_HEIGHT);
+
+	Vector3* float_pixels = new Vector3[SCREEN_WIDTH * SCREEN_HEIGHT];
+	memset(float_pixels, 0, sizeof(Vector3) * SCREEN_WIDTH * SCREEN_HEIGHT);
+
 	Uint32* pixels = new Uint32[SCREEN_WIDTH * SCREEN_HEIGHT];
 	memset(pixels, 0, sizeof(Uint32) * SCREEN_WIDTH * SCREEN_HEIGHT);
 
@@ -55,103 +60,99 @@ int main(int argc, char** argv)
 	Vector3 eye(278, 278, -800);
 	Vector3 target(278, 278, 0);
 
-	camera = Camera({278, 278, -800}, target, {0, 1, 0}, vFOV, ASPECT_RATIO, 0, (eye-target).length()*2, 0, 1);
-	Hitable* world = cornell_box();
+	camera = Camera(eye, target, {0, 1, 0}, vFOV, ASPECT_RATIO, 0, (eye - target).length() * 2, 0, 1);
+	world = cornell_gloss();
 
 	//camera = Camera({5, 2, 10}, {1, 1,-1}, {0, 1, 0}, vFOV, ASPECT_RATIO);
 	//Hitable* world = simpleLight();
 
-
-	PerformanceCounter p{};
-	p.start();
-	double time = 0;
-
-	int SS = int(sqrtf(MAX_SAMPLES));
-
-#pragma omp parallel for
-	for (int y = 0; y < SCREEN_HEIGHT; y++)
-	{
-		thread_local std::mt19937 gen(std::random_device{}());
-		for (int x = 0; x < SCREEN_WIDTH; x++)
-		{
-			float u = x, v = y;
-			Vector3 color(0, 0, 0);
-#ifdef SAMPLING
-
-#ifdef UNIFORM_SAMPLING
-			for (int s = 0; s < SS; s++)
-			{
-				for (int s2 = 0; s2 < SS; s2++)
-				{
-					u = float(x + float(s) / float(SS) + 1 / float(SS * 2));
-					v = float(y + float(s2) / float(SS) + 1 / float(SS * 2));
-
-#else
-
-
-			for (int s = 0; s < MAX_SAMPLES; s++)
-			{
-				//Thread safe rand	
-				u = Random::randf(gen, x, x + 1);
-				v = Random::randf(gen, y, y + 1) ;
-#endif
-#endif
-					u = u / float(SCREEN_WIDTH);
-					v = v / float(SCREEN_HEIGHT);
-
-					Ray ray = camera.getRay(u, v);
-					//Ray ray = camera.getRay(u, v);
-					color += ray_trace(ray, world, 0);
-
-#ifdef SAMPLING
-				}
-
-#ifdef UNIFORM_SAMPLING
-			}
-#endif
-
-			color /= float(MAX_SAMPLES);
-#endif
-
-			//color = {sqrtf(color.r), sqrtf(color.g), sqrtf(color.b)};
-
-			//HDR + Gamma Correction Magic
-			//https://www.slideshare.net/ozlael/hable-john-uncharted2-hdr-lighting  slide 140
-			color -= 0.004;
-			color.clampMin(0);
-			color = (color * (6.2 * color + 0.5)) / (color * (6.2 * color + 1.7) + 0.06);
-
-			pixels[(SCREEN_HEIGHT - y - 1) * SCREEN_WIDTH + x] = vector3_to_uint32(color);
-		}
-		//time = p.getCounter() / float(y) / 1000.0f;
-		cout << "Row " << y << "/" << SCREEN_HEIGHT << endl;
-		//cout << "  Estimated Time remaining:" << (SCREEN_HEIGHT - y) * time << "s" << endl;
-	}
-
-	cout << p.getAndReset() / 1000 << "s" << endl;
-
-	SDL_UpdateTexture(texture, NULL, pixels, sizeof(Uint32) * SCREEN_WIDTH);
-	SDL_RenderCopy(renderer, texture,NULL,NULL);
-	SDL_RenderPresent(renderer);
+	int samples = 0;
 
 	SDL_Event event;
-	bool quit = false;
-	while
-	(
 
-		!
-		quit
-	)
+	bool quit = false;
+	while (!quit)
 	{
-		SDL_RenderPresent(renderer);
-		SDL_WaitEvent(&event);
-		switch (event.type)
+		float blend = 1.0 / float(samples + 1);
+
+#pragma omp parallel for
+		for (int y = 0; y < SCREEN_HEIGHT; y++)
 		{
-		case SDL_QUIT:
-			quit = true;
-			break;
+			thread_local std::mt19937 gen(std::random_device{}());
+			for (int x = 0; x < SCREEN_WIDTH; x++)
+			{
+				float fx = float(x), fy = float(y);
+				float u = fx + 0.5f, v = fy + 0.5f;
+
+				//Thread safe rand	
+				u = Random::randf(gen, fx, fx + 1);
+				v = Random::randf(gen, fy, fy + 1);
+
+				u = u / float(SCREEN_WIDTH);
+				v = v / float(SCREEN_HEIGHT);
+
+				Ray ray = camera.getRay(u, v);
+				//Ray ray = camera.getRay(u, v);
+				Vector3 color = ray_trace(ray, world, 0);
+
+				//color = {sqrtf(color.r), sqrtf(color.g), sqrtf(color.b)};
+
+				//HDR + Gamma Correction Magic
+				//https://www.slideshare.net/ozlael/hable-john-uncharted2-hdr-lighting  slide 140
+				color -= 0.004f;
+				color.clampMin(0);
+				color = (color * (6.2f * color + 0.5f)) / (color * (6.2f * color + 1.7f) + 0.06f);
+
+				float_pixels[(SCREEN_HEIGHT - y - 1) * SCREEN_WIDTH + x].mix(color, blend);
+
+				pixels[(SCREEN_HEIGHT - y - 1) * SCREEN_WIDTH + x] = vector3_to_uint32(
+					float_pixels[(SCREEN_HEIGHT - y - 1) * SCREEN_WIDTH + x]);
+			}
+		}
+
+		//cout << "Sample " << samples++ << endl;
+
+
+		SDL_UpdateTexture(texture, NULL, pixels, sizeof(Uint32) * SCREEN_WIDTH);
+		SDL_RenderCopy(renderer, texture,NULL,NULL);
+		SDL_RenderPresent(renderer);
+
+		int last_x = mouse_x, last_y = mouse_y;
+
+		while (SDL_PollEvent(&event))
+		{
+			switch (event.type)
+			{
+			case SDL_QUIT:
+				quit = true;
+				break;
+			case SDL_MOUSEMOTION:
+				if (!mouse_down) break;
+				SDL_GetMouseState(&mouse_x, &mouse_y);
+				camera.processMouseMovement(mouse_x - last_x, mouse_y - last_y);
+				last_x = mouse_x, last_y = mouse_y;
+				memset(float_pixels, 0, sizeof(Vector3) * SCREEN_WIDTH * SCREEN_HEIGHT);
+				samples = 0;
+				break;
+			case SDL_MOUSEBUTTONDOWN:
+				SDL_GetMouseState(&mouse_x, &mouse_y);
+				last_x = mouse_x, last_y = mouse_y;
+				mouse_down = true;
+				break;
+			case SDL_MOUSEBUTTONUP:
+				mouse_down = false;
+				break;
+			}
+		}
+
+		const Uint8* state = SDL_GetKeyboardState(NULL);
+		if (state[SDL_SCANCODE_R])
+		{
+			memset(float_pixels, 0, sizeof(Vector3) * SCREEN_WIDTH * SCREEN_HEIGHT);
+			samples = 0;
 		}
 	}
+
 	SDL_DestroyWindow(window);
 	SDL_Quit();
 
@@ -188,80 +189,22 @@ Vector3 ray_trace(const Ray& ray, Hitable* world, int depth)
 
 	if (world->hit(ray, 0.001f, FLT_MAX, rec))
 	{
-		Vector3 emitted = rec.mat_ptr->emitted(rec.u, rec.v, rec.position);
+		Vector3 emitted = rec.mat_ptr->emitted(ray, rec);
 		if (depth < MAX_RAY_DEPTH && rec.mat_ptr->scatter(ray, rec, attenuation, ray_out))
 		{
-#ifdef BAD_SHADOWS
-
-			//blinn-phong lighting
-			//no specular yet
-			HitRecord last_rec = rec;
-			Vector3 color;
-			if (last_rec.mat_ptr->shadowsAllowed())
-			{
-				Vector3 diffuse(0);
-				Vector3 specular(0);
-				for (auto&& light : g_lights)
-				{
-#ifdef  PATH_TRACING
-					Vector3 light_position = light.getRandomLightPoint() - last_rec.position;
-#else
-					Vector3 light_position = light.center - last_rec.position;
-#endif
-					float distance = light_position.length();
-					Vector3 light_dir = light_position.getNormalized();
-					float dot = last_rec.normal.dot(light_dir);
-					//Offset bias for acne
-					Ray ray(last_rec.position + last_rec.normal * 0.01, light_dir, ray_out.time);
-					bool in_shadow = (world->hit(ray, 0.001f, light_position.length() * 0.999, rec));
-					
-				if (dynamic_cast<Metal*>(last_rec.mat_ptr))
-					diffuse += (1.0f - in_shadow) * light.color * light.power / distance;
-				else
-					diffuse += (1.0f - in_shadow) * dot * light.color * light.power / distance;
-					specular += (1.0f - in_shadow) * last_rec.mat_ptr->getSpecular(camera.position - last_rec.position,
-					                                                               light_position, last_rec.normal,
-					                                                               light.color, light.power);
-				}
-				diffuse /= float(g_lights.size());
-				specular /= float(g_lights.size());
-				diffuse += AMBIENT_LIGHT;
-				diffuse.clamp(0, 1);
-				specular.clamp(0, 100);
-				color = {};
-
-				if (dynamic_cast<Lambertian*>(last_rec.mat_ptr) ||
-					(dynamic_cast<BlinnPhong*>(last_rec.mat_ptr) && !dynamic_cast<BlinnPhong*>(last_rec.mat_ptr)->
-						reflects))
-					color = (diffuse + specular) * attenuation;
-				else if (dynamic_cast<Metal*>(last_rec.mat_ptr))
-					color = (diffuse * attenuation * ray_trace(ray_out, world, depth + 1));
-				else
-					color = (diffuse * attenuation) + (specular * attenuation * ray_trace(ray_out, world, depth + 1));
-				return emitted + color;
-			}
-
-						if (dynamic_cast<Dialectric*>(last_rec.mat_ptr))
-			{
-				color = attenuation * ray_trace(ray_out, world, depth + 1);
-				if (last_rec.mat_ptr->reflection(ray, last_rec, attenuation, ray_out))
-					color += attenuation * ray_trace(ray_out, world, depth + 1);
-				return color;
-			}
-#endif
-
-
-
-
-			return emitted + attenuation * ray_trace(ray_out, world, depth + 1);
+			Vector3 color = emitted + attenuation * ray_trace(ray_out, world, depth + 1);
+			//Whitted Ray tracing splits the rays into two for refract+reflect materials
+			if (rec.mat_ptr->scatterTwo(ray, rec, attenuation, ray_out))
+				color += attenuation * ray_trace(ray_out, world, depth + 1);
+			return color;
 		}
 		else
-
 			return emitted;
 	}
 	else
 		return AMBIENT_LIGHT;
 }
+
 
 Hitable* cornell_lambert()
 {
@@ -294,53 +237,35 @@ Hitable* cornell_lambert()
 	return new HitableList(list, i);
 }
 
+void setupCornellWalls(Hitable** list, int& i)
+{
+	//left walls
+	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, red_matte));
+	//right
+	list[i++] = new YZRect(0, 555, 0, 555, 0, green_matte);
+	//ceiling
+	list[i++] = new FlipNormals(new XZRect(0, 555, 0, 555, 555, white_matte));
+	//floor
+	list[i++] = new XZRect(0, 555, 0, 555, 0, white_matte);
+	//back
+	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, white_matte));
+}
+
 Hitable* cornell_gloss()
 {
-	Material* white = new Lambertian(new ConstantTexture(white_color));
-	Material* red = new Lambertian(new ConstantTexture(red_color));
-	Material* green = new Lambertian(new ConstantTexture(green_color));
-	Material* blue = new Lambertian(new ConstantTexture(blue_color));
-
-	Material* light = new DiffuseLight(new ConstantTexture({60, 60, 60}));
-
-	Material* mirror = new Metal({0.95f, 0.95f, 0.95f}, 0.2f);
-	Material* perfectMirror = new Metal({1.f, 1.f, 1.f}, 0.f);
-
-#if 1
-	bool reflect = true;
-	float blur = 0.4f;
-	Material* whiteFuzzy = new BlinnPhong(white_color, Vector3(1), 64, reflect, blur);
-	Material* redFuzzy = new BlinnPhong(red_color, Vector3(1), 64, reflect, blur);
-	Material* greenFuzzy = new BlinnPhong(green_color, Vector3(1), 64, reflect, blur);
-	Material* blueFuzzy = new BlinnPhong(blue_color, Vector3(1), 64, reflect, blur);
-#else
-	float blur = 0.3f;
-	Material* whiteFuzzy = new Metal(white_color, blur);
-	Material* redFuzzy = new Metal(red_color,blur);
-	Material* greenFuzzy = new Metal(green_color,blur);
-	Material* blueFuzzy = new Metal(blue_color,blur);
-#endif
-	g_lights.emplace_back(Vector3(50, 50, 0), Vector3(0, 0, 0), Vector3(1), Vector3(300));
-
-
 	Hitable** list = new Hitable*[11];
 	int i = 0;
 
+	Material* light = new DiffuseLight(new ConstantTexture({1000, 600, 600}));
+	g_lights.emplace_back(Vector3(25, 25, 0), Vector3(50, 50, 0), Vector3(1), Vector3(300));
 
-	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, red));
-	list[i++] = new YZRect(0, 555, 0, 555, 0, green);
-	list[i++] = new FlipNormals(new XZRect(0, 555, 0, 555, 555, white));
-	//floor
-	list[i++] = new XZRect(0, 555, 0, 555, 0, white);
-	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, white));
-	//list[i++] = new XYRect(0, 555, 0, 555, 0, mirror);
+	setupCornellWalls(list, i);
 	list[i++] = new XYRect(0, 50, 0, 50, 0, light);
 
-	list[i++] = new Sphere({168, 388, 278}, 100, whiteFuzzy);
-	list[i++] = new Sphere({168, 168, 278}, 100, redFuzzy);
-	list[i++] = new Sphere({388, 388, 278}, 100, greenFuzzy);
-	list[i++] = new Sphere({388, 168, 278}, 100, blueFuzzy);
-
+	list[i++] = new Sphere({168, 388, 278}, 100, white_gloss);
+	list[i++] = new Sphere({168, 168, 278}, 100, red_gloss);
+	list[i++] = new Sphere({388, 388, 278}, 100, green_gloss);
+	list[i++] = new Sphere({388, 168, 278}, 100, blue_gloss);
 	return new HitableList(list, i);
 }
 
@@ -368,9 +293,9 @@ Hitable* cornell_dof()
 	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, whiteWall));
 	list[i++] = new XYRect(0, 50, 0, 50, 0, light);
 
-	list[i++] = new Sphere({278,278,278},80, white);
-	list[i++] = new Sphere({378,278,400},80,red);
-	list[i++] = new Sphere({198,278,100},80, blue);
+	list[i++] = new Sphere({278, 278, 278}, 80, white);
+	list[i++] = new Sphere({378, 278, 400}, 80, red);
+	list[i++] = new Sphere({198, 278, 100}, 80, blue);
 
 	return new HitableList(list, i);
 }
@@ -404,9 +329,9 @@ Hitable* cornell_blur()
 	list[i++] = new MovingSphere({428,120,228},{428,80,228},0,1,80, red);
 	list[i++] = new MovingSphere({128,120,228},{128,80,328},0,1,80, blue);
 #else
-	list[i++] = new Sphere({288,80,188},80, white);
-	list[i++] = new Sphere({428,80,228},80,red);
-	list[i++] = new Sphere({128,80,328},80, blue);
+	list[i++] = new Sphere({288, 80, 188}, 80, white);
+	list[i++] = new Sphere({428, 80, 228}, 80, red);
+	list[i++] = new Sphere({128, 80, 328}, 80, blue);
 #endif
 	return new HitableList(list, i);
 }
@@ -414,7 +339,7 @@ Hitable* cornell_blur()
 
 Hitable* cornell_shadow()
 {
-			Material* checker = new Lambertian(new CheckerTexture(new ConstantTexture({0.12f, 0.45f, 0.15f}),
+	Material* checker = new Lambertian(new CheckerTexture(new ConstantTexture({0.12f, 0.45f, 0.15f}),
 	                                                      new ConstantTexture({0.73f, 0.73f, 0.73f}), 0.1f));
 	Material* whiteWall = new Lambertian(new ConstantTexture(white_color));
 	Material* redWall = new Lambertian(new ConstantTexture(red_color));
@@ -437,7 +362,7 @@ Hitable* cornell_shadow()
 	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, checker));
 	list[i++] = new XYRect(0, 50, 0, 50, 0, light);
 
-	
+
 	list[i++] = new Sphere({308, 188, 278}, 80, red);
 	list[i++] = new Box({178, 100, 178}, {50, 200, 50}, white);
 	return new HitableList(list, i);
@@ -503,7 +428,7 @@ Hitable* cornell_box()
 	Material* red = new Lambertian(new ConstantTexture({0.65f, 0.05f, 0.05f}));
 	Material* green = new Lambertian(new ConstantTexture({0.12f, 0.45f, 0.15f}));
 	Material* light = new DiffuseLight(new ConstantTexture({15, 15, 15}));
-		Material* light2 = new DiffuseLight(new ConstantTexture({2, 2, 2}));
+	Material* light2 = new DiffuseLight(new ConstantTexture({2, 2, 2}));
 	Material* checker = new Lambertian(new CheckerTexture(new ConstantTexture({0.12f, 0.45f, 0.15f}),
 	                                                      new ConstantTexture({0.73f, 0.73f, 0.73f}), 0.1f));
 
