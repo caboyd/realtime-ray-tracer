@@ -16,22 +16,17 @@
 using std::cout;
 using std::endl;
 
-Uint32 rgba_to_uint32(Uint8 r, Uint8 g, Uint8 b, Uint8 a);
+Vector3 uint32_to_vector3(Uint32 color);
 Uint32 vector3_to_uint32(const Vector3& color, float alpha = 1);
 Vector3 ray_trace(const Ray& ray, Hitable* world, int depth);
 
-
-Hitable* simpleLight();
 Hitable* cornell_box();
-Hitable* cornell_gloss();
-Hitable* cornell_translucency();
-Hitable* cornell_shadow();
-Hitable* cornell_blur();
-Hitable* cornell_dof();
-Hitable* cornell_lambert();
 
 void setupCornellWalls(Hitable** list, int& i);
 
+Vector3 eye(278, 278, 1);
+Vector3 target(278, 278, 0);
+const float vFOV = 40;
 
 int main(int argc, char** argv)
 {
@@ -45,80 +40,88 @@ int main(int argc, char** argv)
 	SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STATIC, SCREEN_WIDTH,
 	                                         SCREEN_HEIGHT);
 
+	//RGB 32bit float data to allow for precise sampling and blending of colors
 	Vector3* float_pixels = new Vector3[SCREEN_WIDTH * SCREEN_HEIGHT];
 	memset(float_pixels, 0, sizeof(Vector3) * SCREEN_WIDTH * SCREEN_HEIGHT);
 
+	//RGBA 8 bit color for displaying
 	Uint32* pixels = new Uint32[SCREEN_WIDTH * SCREEN_HEIGHT];
 	memset(pixels, 0, sizeof(Uint32) * SCREEN_WIDTH * SCREEN_HEIGHT);
 
 	SDL_SetRenderDrawColor(renderer, 50, 100, 50, 255);
-
 	SDL_RenderClear(renderer);
 
-	//Pos, normal, up, vFov, aspect ratio
-	const float vFOV = 40;
-	Vector3 eye(278, 278, -800);
-	Vector3 target(278, 278, 0);
-
+	//Setup Camera and world
 	camera = Camera(eye, target, {0, 1, 0}, vFOV, ASPECT_RATIO, 0, (eye - target).length() * 2, 0, 1);
-	world = cornell_gloss();
+	world = cornell_box();
 
-	//camera = Camera({5, 2, 10}, {1, 1,-1}, {0, 1, 0}, vFOV, ASPECT_RATIO);
-	//Hitable* world = simpleLight();
+	//Timer for delta time
+	PerformanceCounter time{};
+	time.start();
 
+	//number of samples completed
 	int samples = 0;
 
-	SDL_Event event;
-
+	//Render loop
 	bool quit = false;
 	while (!quit)
 	{
-		float blend = 1.0 / float(samples + 1);
+		//Blend factor for each sample
+		const double blend_factor = 1.0 / double(samples + 1);
 
+		//Parallelize the loop for each row of pixels
 #pragma omp parallel for
 		for (int y = 0; y < SCREEN_HEIGHT; y++)
 		{
+			//Thread safe random generator
 			thread_local std::mt19937 gen(std::random_device{}());
 			for (int x = 0; x < SCREEN_WIDTH; x++)
 			{
-				float fx = float(x), fy = float(y);
-				float u = fx + 0.5f, v = fy + 0.5f;
+				const float fx = float(x), fy = float(y);
 
-				//Thread safe rand	
-				u = Random::randf(gen, fx, fx + 1);
-				v = Random::randf(gen, fy, fy + 1);
+				//Jiggle the pixel
+				float u = Random::randf(gen, fx, fx + 1);
+				float v = Random::randf(gen, fy, fy + 1);
 
+				//Get the pixel in 0 to 1 space
 				u = u / float(SCREEN_WIDTH);
 				v = v / float(SCREEN_HEIGHT);
 
 				Ray ray = camera.getRay(u, v);
-				//Ray ray = camera.getRay(u, v);
+
+				//Ray trace and get the color of the pixel
 				Vector3 color = ray_trace(ray, world, 0);
 
-				//color = {sqrtf(color.r), sqrtf(color.g), sqrtf(color.b)};
+				//Color is stored in high dynamic range
+				//Blend the new color with the old color using blend factor
+				float_pixels[(SCREEN_HEIGHT - y - 1) * SCREEN_WIDTH + x].mix(color, blend_factor);
 
 				//HDR + Gamma Correction Magic
 				//https://www.slideshare.net/ozlael/hable-john-uncharted2-hdr-lighting  slide 140
+				color = float_pixels[(SCREEN_HEIGHT - y - 1) * SCREEN_WIDTH + x];
 				color -= 0.004f;
 				color.clampMin(0);
 				color = (color * (6.2f * color + 0.5f)) / (color * (6.2f * color + 1.7f) + 0.06f);
 
-				float_pixels[(SCREEN_HEIGHT - y - 1) * SCREEN_WIDTH + x].mix(color, blend);
-
-				pixels[(SCREEN_HEIGHT - y - 1) * SCREEN_WIDTH + x] = vector3_to_uint32(
-					float_pixels[(SCREEN_HEIGHT - y - 1) * SCREEN_WIDTH + x]);
+				//Output color is corrected
+				pixels[(SCREEN_HEIGHT - y - 1) * SCREEN_WIDTH + x] = vector3_to_uint32(color);
 			}
 		}
+		samples++;
+		cout << "Sample " << samples << endl;
 
-		//cout << "Sample " << samples++ << endl;
-
-
+		//Ouput to screen
 		SDL_UpdateTexture(texture, NULL, pixels, sizeof(Uint32) * SCREEN_WIDTH);
 		SDL_RenderCopy(renderer, texture,NULL,NULL);
 		SDL_RenderPresent(renderer);
 
-		int last_x = mouse_x, last_y = mouse_y;
 
+		//Input/Event Update -------------------
+		int last_x = mouse_x, last_y = mouse_y;
+		float delta_time = time.getAndReset() / 2.f;
+		bool moved = false;
+
+		SDL_Event event;
 		while (SDL_PollEvent(&event))
 		{
 			switch (event.type)
@@ -131,8 +134,7 @@ int main(int argc, char** argv)
 				SDL_GetMouseState(&mouse_x, &mouse_y);
 				camera.processMouseMovement(mouse_x - last_x, mouse_y - last_y);
 				last_x = mouse_x, last_y = mouse_y;
-				memset(float_pixels, 0, sizeof(Vector3) * SCREEN_WIDTH * SCREEN_HEIGHT);
-				samples = 0;
+				moved = true;
 				break;
 			case SDL_MOUSEBUTTONDOWN:
 				SDL_GetMouseState(&mouse_x, &mouse_y);
@@ -148,6 +150,41 @@ int main(int argc, char** argv)
 		const Uint8* state = SDL_GetKeyboardState(NULL);
 		if (state[SDL_SCANCODE_R])
 		{
+			moved = true;
+			camera.position = eye;
+			camera.lookAt(target);
+		}
+		if (state[SDL_SCANCODE_A])
+		{
+			camera.moveRight(-delta_time);
+			moved = true;
+		}
+
+		if (state[SDL_SCANCODE_D])
+		{
+			moved = true;
+			camera.moveRight(delta_time);
+		}
+		if (state[SDL_SCANCODE_W])
+		{
+			camera.moveForward(-delta_time);
+			moved = true;
+		}
+
+		if (state[SDL_SCANCODE_S])
+		{
+			moved = true;
+			camera.moveForward(delta_time);
+		}
+		if (state[SDL_SCANCODE_SPACE])
+		{
+			moved = true;
+			camera.moveUp(delta_time);
+		}
+
+		//If camera moved reset the pixel data
+		if (moved)
+		{
 			memset(float_pixels, 0, sizeof(Vector3) * SCREEN_WIDTH * SCREEN_HEIGHT);
 			samples = 0;
 		}
@@ -156,16 +193,11 @@ int main(int argc, char** argv)
 	SDL_DestroyWindow(window);
 	SDL_Quit();
 
-	return
-		0;
+	return 0;
 }
 
-inline Uint32 rgba_to_uint32(Uint8 r, Uint8 g, Uint8 b, Uint8 a)
-{
-	auto result = r << 24 | g << 16 | b << 8 | a;
-	return result;
-}
 
+//Converts a rgb float Vector color to Uint32 rgba 8 bit color
 Uint32 vector3_to_uint32(const Vector3& color, float alpha)
 {
 	int r = int(255.9 * color.r);
@@ -180,6 +212,14 @@ Uint32 vector3_to_uint32(const Vector3& color, float alpha)
 	return result;
 }
 
+//Converts Uint32 rgba 8 bit color to a rgb float Vector color
+Vector3 uint32_to_vector3(Uint32 color)
+{
+	Vector3 rgb(
+		float(char(color >> 24)) / 255.f, float(char(color >> 16)) / 255.f, float(char(color >> 8)) / 255.f);
+	return rgb;
+}
+
 Vector3 ray_trace(const Ray& ray, Hitable* world, int depth)
 {
 	HitRecord rec;
@@ -192,11 +232,7 @@ Vector3 ray_trace(const Ray& ray, Hitable* world, int depth)
 		Vector3 emitted = rec.mat_ptr->emitted(ray, rec);
 		if (depth < MAX_RAY_DEPTH && rec.mat_ptr->scatter(ray, rec, attenuation, ray_out))
 		{
-			Vector3 color = emitted + attenuation * ray_trace(ray_out, world, depth + 1);
-			//Whitted Ray tracing splits the rays into two for refract+reflect materials
-			if (rec.mat_ptr->scatterTwo(ray, rec, attenuation, ray_out))
-				color += attenuation * ray_trace(ray_out, world, depth + 1);
-			return color;
+			return emitted + attenuation * ray_trace(ray_out, world, depth + 1);
 		}
 		else
 			return emitted;
@@ -206,265 +242,49 @@ Vector3 ray_trace(const Ray& ray, Hitable* world, int depth)
 }
 
 
-Hitable* cornell_lambert()
-{
-	Material* white = new Lambertian(new ConstantTexture(white_color));
-	Material* red = new Lambertian(new ConstantTexture(red_color));
-	Material* green = new Lambertian(new ConstantTexture(green_color));
-	Material* blue = new Lambertian(new ConstantTexture(blue_color));
-
-	Material* light = new DiffuseLight(new ConstantTexture({60, 60, 60}));
-
-	g_lights.emplace_back(Vector3(50, 50, 0), Vector3(0, 0, 0), Vector3(1), Vector3(300));
-
-	Hitable** list = new Hitable*[11];
-	int i = 0;
-
-	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, red));
-	list[i++] = new YZRect(0, 555, 0, 555, 0, green);
-	list[i++] = new FlipNormals(new XZRect(0, 555, 0, 555, 555, white));
-	//floor
-	list[i++] = new XZRect(0, 555, 0, 555, 0, white);
-	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, white));
-	//list[i++] = new XYRect(0, 555, 0, 555, 0, mirror);
-	list[i++] = new XYRect(0, 50, 0, 50, 0, light);
-
-	list[i++] = new Sphere({168, 388, 278}, 100, white);
-	list[i++] = new Sphere({168, 168, 278}, 100, red);
-	list[i++] = new Sphere({388, 388, 278}, 100, green);
-	list[i++] = new Sphere({388, 168, 278}, 100, blue);
-
-	return new HitableList(list, i);
-}
-
 void setupCornellWalls(Hitable** list, int& i)
 {
 	//left walls
-	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, red_matte));
+	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, red_gloss));
 	//right
-	list[i++] = new YZRect(0, 555, 0, 555, 0, green_matte);
+	list[i++] = new YZRect(0, 555, 0, 555, 0, green_gloss);
 	//ceiling
 	list[i++] = new FlipNormals(new XZRect(0, 555, 0, 555, 555, white_matte));
 	//floor
 	list[i++] = new XZRect(0, 555, 0, 555, 0, white_matte);
 	//back
-	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, white_matte));
-}
-
-Hitable* cornell_gloss()
-{
-	Hitable** list = new Hitable*[11];
-	int i = 0;
-
-	Material* light = new DiffuseLight(new ConstantTexture({1000, 600, 600}));
-	g_lights.emplace_back(Vector3(25, 25, 0), Vector3(50, 50, 0), Vector3(1), Vector3(300));
-
-	setupCornellWalls(list, i);
-	list[i++] = new XYRect(0, 50, 0, 50, 0, light);
-
-	list[i++] = new Sphere({168, 388, 278}, 100, white_gloss);
-	list[i++] = new Sphere({168, 168, 278}, 100, red_gloss);
-	list[i++] = new Sphere({388, 388, 278}, 100, green_gloss);
-	list[i++] = new Sphere({388, 168, 278}, 100, blue_gloss);
-	return new HitableList(list, i);
-}
-
-Hitable* cornell_dof()
-{
-	Material* whiteWall = new Lambertian(new ConstantTexture(white_color));
-	Material* redWall = new Lambertian(new ConstantTexture(red_color));
-	Material* greenWall = new Lambertian(new ConstantTexture(green_color));
-	Material* light = new DiffuseLight(new ConstantTexture({60, 60, 60}));
-
-	g_lights.emplace_back(Vector3(25, 25, 0), Vector3(0, 0, 0), Vector3(1), Vector3(300));
-
-	Hitable** list = new Hitable*[11];
-	int i = 0;
-
-	Material* white = new BlinnPhong(white_color, Vector3(1), 64, false, 0.f);
-	Material* red = new BlinnPhong(red_color, Vector3(1), 64, false, 0.f);
-	Material* blue = new BlinnPhong(blue_color, Vector3(1), 64, false, 0.f);
-
-	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, redWall));
-	list[i++] = new YZRect(0, 555, 0, 555, 0, greenWall);
-	list[i++] = new FlipNormals(new XZRect(0, 555, 0, 555, 555, whiteWall));
-	//floor
-	list[i++] = new XZRect(0, 555, 0, 555, 0, whiteWall);
-	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, whiteWall));
-	list[i++] = new XYRect(0, 50, 0, 50, 0, light);
-
-	list[i++] = new Sphere({278, 278, 278}, 80, white);
-	list[i++] = new Sphere({378, 278, 400}, 80, red);
-	list[i++] = new Sphere({198, 278, 100}, 80, blue);
-
-	return new HitableList(list, i);
-}
-
-
-Hitable* cornell_blur()
-{
-	Material* whiteWall = new Lambertian(new ConstantTexture(white_color));
-	Material* redWall = new Lambertian(new ConstantTexture(red_color));
-	Material* greenWall = new Lambertian(new ConstantTexture(green_color));
-	Material* light = new DiffuseLight(new ConstantTexture({60, 60, 60}));
-
-	g_lights.emplace_back(Vector3(25, 25, 0), Vector3(0, 0, 0), Vector3(1), Vector3(300));
-
-	Hitable** list = new Hitable*[11];
-	int i = 0;
-
-	Material* white = new BlinnPhong(white_color, Vector3(1), 64, false, 0.f);
-	Material* red = new BlinnPhong(red_color, Vector3(1), 64, false, 0.f);
-	Material* blue = new BlinnPhong(blue_color, Vector3(1), 64, false, 0.f);
-
-	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, redWall));
-	list[i++] = new YZRect(0, 555, 0, 555, 0, greenWall);
-	list[i++] = new FlipNormals(new XZRect(0, 555, 0, 555, 555, whiteWall));
-	//floor
-	list[i++] = new XZRect(0, 555, 0, 555, 0, whiteWall);
-	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, whiteWall));
-	list[i++] = new XYRect(0, 50, 0, 50, 0, light);
-#if 0
-	list[i++] = new MovingSphere({238,140,238},{288,80,188},0,1,80, white);
-	list[i++] = new MovingSphere({428,120,228},{428,80,228},0,1,80, red);
-	list[i++] = new MovingSphere({128,120,228},{128,80,328},0,1,80, blue);
-#else
-	list[i++] = new Sphere({288, 80, 188}, 80, white);
-	list[i++] = new Sphere({428, 80, 228}, 80, red);
-	list[i++] = new Sphere({128, 80, 328}, 80, blue);
-#endif
-	return new HitableList(list, i);
-}
-
-
-Hitable* cornell_shadow()
-{
-	Material* checker = new Lambertian(new CheckerTexture(new ConstantTexture({0.12f, 0.45f, 0.15f}),
-	                                                      new ConstantTexture({0.73f, 0.73f, 0.73f}), 0.1f));
-	Material* whiteWall = new Lambertian(new ConstantTexture(white_color));
-	Material* redWall = new Lambertian(new ConstantTexture(red_color));
-	Material* greenWall = new Lambertian(new ConstantTexture(green_color));
-	Material* light = new DiffuseLight(new ConstantTexture({60, 60, 60}));
-
-	g_lights.emplace_back(Vector3(25, 25, 0), Vector3(0, 0, 0), Vector3(1), Vector3(300));
-
-	Hitable** list = new Hitable*[11];
-	int i = 0;
-
-	Material* white = new BlinnPhong(white_color, Vector3(1), 64, false, 0.f);
-	Material* red = new BlinnPhong(red_color, Vector3(1), 64, false, 0.f);
-
-	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, redWall));
-	list[i++] = new YZRect(0, 555, 0, 555, 0, greenWall);
-	list[i++] = new FlipNormals(new XZRect(0, 555, 0, 555, 555, whiteWall));
-	//floor
-	list[i++] = new XZRect(0, 555, 0, 555, 0, whiteWall);
-	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, checker));
-	list[i++] = new XYRect(0, 50, 0, 50, 0, light);
-
-
-	list[i++] = new Sphere({308, 188, 278}, 80, red);
-	list[i++] = new Box({178, 100, 178}, {50, 200, 50}, white);
-	return new HitableList(list, i);
-}
-
-Hitable* cornell_translucency()
-{
-	Material* checker = new Lambertian(new CheckerTexture(new ConstantTexture({0.12f, 0.45f, 0.15f}),
-	                                                      new ConstantTexture({0.73f, 0.73f, 0.73f}), 0.1f));
-	Material* whiteWall = new Lambertian(new ConstantTexture(white_color));
-	Material* redWall = new Lambertian(new ConstantTexture(red_color));
-	Material* greenWall = new Lambertian(new ConstantTexture(green_color));
-	Material* light = new DiffuseLight(new ConstantTexture({60, 60, 60}));
-
-	float blur = 0.0f;
-	float ref = 1.5f;
-	Material* white = new Dialectric(white_color, ref, blur);
-	Material* red = new Dialectric(red_color, ref, blur);
-	Material* green = new Dialectric(green_color, ref, blur);
-	Material* blue = new Dialectric(blue_color, ref, blur);
-
-	g_lights.emplace_back(Vector3(50, 50, 0), Vector3(0, 0, 0), Vector3(1), Vector3(300));
-
-	Hitable** list = new Hitable*[11];
-	int i = 0;
-
-	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, redWall));
-	list[i++] = new YZRect(0, 555, 0, 555, 0, greenWall);
-	list[i++] = new FlipNormals(new XZRect(0, 555, 0, 555, 555, whiteWall));
-	//floor
-	list[i++] = new XZRect(0, 555, 0, 555, 0, whiteWall);
-	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, checker));
-	list[i++] = new XYRect(0, 50, 0, 50, 0, light);
-
-	list[i++] = new Sphere({168, 388, 278}, 100, white);
-	list[i++] = new Sphere({168, 168, 278}, 100, red);
-	list[i++] = new Sphere({388, 388, 278}, 100, green);
-	list[i++] = new Sphere({388, 168, 278}, 100, blue);
-
-	return new HitableList(list, i);
-}
-
-Hitable* simpleLight()
-{
-	Texture* t = new ConstantTexture({1, 0, 0});
-	Texture* checker = new CheckerTexture(new ConstantTexture({.2f, .3f, .1f}), new ConstantTexture({.9f, .9f, .9f}),
-	                                      10);
-	Hitable** list = new Hitable*[4];
-
-	list[0] = new Sphere({0, -1000, 0}, 1000, new Lambertian(checker));
-	list[1] = new Sphere({0, 1, 2}, 3, new Lambertian(t));
-	list[2] = new Sphere({0, 7, 0}, 2, new DiffuseLight(new ConstantTexture({4, 4, 4})));
-	list[3] = new XYRect(3, 5, 1, 3, -2, new DiffuseLight(new ConstantTexture({4, 4, 4})));
-
-	g_lights.emplace_back(Vector3(4, 2, -2), Vector3(2, 2, 0), Vector3(1), Vector3(4));
-
-	return new HitableList(list, 4);
+	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, white_gloss));
+	//front
+	list[i++] = new XYRect(0, 555, 0, 555, 0, white_gloss);
 }
 
 Hitable* cornell_box()
 {
-	Material* white = new Lambertian(new ConstantTexture({0.73f, 0.73f, 0.73f}));
-	Material* red = new Lambertian(new ConstantTexture({0.65f, 0.05f, 0.05f}));
-	Material* green = new Lambertian(new ConstantTexture({0.12f, 0.45f, 0.15f}));
 	Material* light = new DiffuseLight(new ConstantTexture({15, 15, 15}));
 	Material* light2 = new DiffuseLight(new ConstantTexture({2, 2, 2}));
-	Material* checker = new Lambertian(new CheckerTexture(new ConstantTexture({0.12f, 0.45f, 0.15f}),
-	                                                      new ConstantTexture({0.73f, 0.73f, 0.73f}), 0.1f));
 
-	Material* mirror = new Metal(white_color, 0.3f);
-	Material* metal = new Metal(white_color, 0.3f);
-	Material* dialectric = new Dialectric(white_color, 1.5);
 
-	Material* blinn = new BlinnPhong(red_color, Vector3(1), 128, false, 1.f);
+	Material* metal = new Metal(white_color, 0.0f);
+	Material* dialectric = new Dialectric(white_color, 2.54);
 
 	Hitable** list = new Hitable*[11];
 	int i = 0;
 
-
-	g_lights.emplace_back(Vector3((213 + 343) / 2, 524, (227 + 332) / 2), Vector3(342 - 213, 0, 332 - 227), Vector3(1),
+	g_lights.emplace_back(Vector3((150 + 400) / 2, 524, (150 + 400) / 2), Vector3(400 - 150, 0, 400 - 150), Vector3(1),
 	                      Vector3(300));
 
-
-	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, red));
-	list[i++] = new YZRect(0, 555, 0, 555, 0, green);
-	list[i++] = new XZRect(213, 343, 227, 332, 554, light);
-	//list[i++] = new XZRect(0, 555, 0, 555, 554, light2);
-	list[i++] = new FlipNormals(new XZRect(0, 555, 0, 555, 555, white));
-	//floor
-	list[i++] = new XZRect(0, 555, 0, 555, 0, white);
-	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, white));
-	//list[i++] = new XYRect(0, 555, 0, 555, 0, mirror);
+	setupCornellWalls(list, i);
+	//list[i++] = new XZRect(150, 400, 150, 400, 554.9, light);
+	list[i++] = new XZRect(0, 555, 0, 555, 554, light2);
 
 	list[i++] = new Sphere({450, 80, 250}, 75, dialectric);
-#ifdef PATH_TRACING
-	list[i++] = new MovingSphere({105, 80, 250}, {105, 160, 250}, 0.f, 1.f, 75, red);
+#ifdef DISTRIBUTED_RAYS
+	list[i++] = new MovingSphere({105, 80, 250}, {105, 160, 250}, 0.f, 1.f, 75, red_matte);
 #else
 	list[i++] = new Sphere({105, 80, 250}, 75, blinn);
 #endif
 	list[i++] = new Box({475, 75, 450}, {100, 150, 100}, checker);
 	list[i++] = new Sphere({278, 20, 278}, 80, metal);
 
-	//return new BVHNode(list, i, 0, 0);
 	return new HitableList(list, i);
 }

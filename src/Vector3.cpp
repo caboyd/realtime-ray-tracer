@@ -80,11 +80,11 @@ void Vector3::clampMin(float min)
 	z = z < min ? min : z;
 }
 
-void Vector3::mix(const Vector3& other, float blend)
+void Vector3::mix(const Vector3& other, double blend)
 {
-	x = other.x * blend + x * (1.0f - blend);
-	y = other.y * blend + y * (1.0f - blend);
-	z = other.z * blend + z * (1.0f - blend);
+	x = other.x * blend + x * (1.0 - blend);
+	y = other.y * blend + y * (1.0 - blend);
+	z = other.z * blend + z * (1.0 - blend);
 }
 
 bool Vector3::isZero() const

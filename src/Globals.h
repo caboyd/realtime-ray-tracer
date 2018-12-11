@@ -8,8 +8,8 @@ class Hitable;
 
 #define global_extern extern
 
-//#define PATH_TRACING
-//#define DISTRIBUTED_RAYS
+#define PATH_TRACING
+#define DISTRIBUTED_RAYS
 
 global_extern int mouse_x,mouse_y;
 global_extern bool mouse_down;
@@ -45,3 +45,5 @@ global_extern Material* white_gloss;
 global_extern Material* red_gloss;
 global_extern Material* green_gloss;
 global_extern Material* blue_gloss;
+
+global_extern Material* checker;

@@ -36,9 +36,6 @@ public:
 
 	Ray getRay(float x, float y) const;
 
-	Mat4 getViewMatrix() const;
-	Mat4 getViewMatrixInverse() const;
-
 	Vector3 getForward() const;
 	Vector3 getRight() const;
 	Vector3 getUp() const;
@@ -47,6 +44,8 @@ public:
 	void moveForward(float distance);
 	void moveUp(float distance);
 	void moveRight(float distance);
+
+	void lookAt(const Vector3& target);
 
 	void processMouseMovement(int x_offset, int y_offset, bool constrain_pitch = true);
 

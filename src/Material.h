@@ -129,7 +129,6 @@ public:
 
 		scattered_ray_out.origin = rec.position;
 
-#ifdef PATH_TRACING
 		if (Random::randf(0, 1) < reflect_prob)
 		{
 			attenuation = albedo;
@@ -137,13 +136,7 @@ public:
 		}
 		else
 			scattered_ray_out.direction = refracted + blur * Random::random_in_unit_sphere();
-#else
-		scattered_ray_out.direction = refracted;
-		attenuation = Vector3(1.0f - reflect_prob);
-		scattered_ray_out.origin = scattered_ray_out.direction.dot(rec.normal) < 0
-			                           ? scattered_ray_out.origin - rec.normal * 0.01f
-			                           : scattered_ray_out.origin + rec.normal * 0.01f;
-#endif
+
 
 		return true;
 	}

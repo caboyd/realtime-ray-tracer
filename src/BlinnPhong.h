@@ -9,7 +9,7 @@
 class BlinnPhong : public Material
 {
 public:
-	Vector3 kd;
+	Texture* kd;
 	Vector3 ks;
 	float n;
 	bool reflects;
@@ -19,7 +19,7 @@ public:
 	{
 	}
 
-	BlinnPhong(Vector3 diffuse, Vector3 specular, float specular_exponent = 0, bool reflects = false, float fuzz = 0.0f)
+	BlinnPhong(Texture* diffuse, Vector3 specular, float specular_exponent = 0, bool reflects = false, float fuzz = 0.0f)
 	{
 		kd = diffuse;
 		ks = specular;
@@ -64,13 +64,13 @@ public:
 		diffuse.clamp(0, 1);
 		specular.clamp(0, 100);
 
-		Vector3 color = diffuse * kd + specular * ks;
+		Vector3 color = diffuse * kd->value(rec.u,rec.v,rec.position) + specular * ks;
 		return color;
 	}
 
 	bool scatter(const Ray& ray_in, const HitRecord& rec, Vector3& attenuation, Ray& scattered_ray_out) const override
 	{
-	
+		if(!reflects) return false;
 		Vector3 reflected = reflect(ray_in.direction.getNormalized(), rec.normal);
 	
 		HitRecord shadow_rec;

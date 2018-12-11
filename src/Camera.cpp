@@ -61,48 +61,6 @@ Ray Camera::getRay(float x, float y) const
 	return Ray(origin, direction, time);
 }
 
-Mat4 Camera::getViewMatrix() const
-{
-	Vector3 VPN = normal;
-	Vector3 VRP = position;
-	Vector3 u, v, n;
-	orthoNormalVectors(VPN, Vector3(0, 1, 0), u, v, n);
-
-	Mat4 R = Mat4(u.x, u.y, u.z, 0.f,
-	              v.x, v.y, v.z, 0.f,
-	              n.x, n.y, n.z, 0.f,
-	              0.f, 0.f, 0.f, 1.f);
-
-	Mat4 T = Mat4(1.f, 0.f, 0.f, -VRP.x,
-	              0.f, 1.f, 0.f, -VRP.y,
-	              0.f, 0.f, 1.f, -VRP.z,
-	              0.f, 0.f, 0.f, 1.f);
-
-	//4x4 Matrix Multiplication
-	return R * T;
-}
-
-Mat4 Camera::getViewMatrixInverse() const
-{
-	Vector3 VPN = normal;
-	Vector3 VRP = position;
-	Vector3 u, v, n;
-	orthoNormalVectors(VPN, Vector3(0, 1, 0), u, v, n);
-
-	Mat4 R_inv = Mat4(u.x, v.x, n.x, 0.f,
-	                  u.y, v.y, n.y, 0.f,
-	                  u.z, v.z, n.z, 0.f,
-	                  0.f, 0.f, 0.f, 1.f);
-
-	Mat4 T_inv = Mat4(1.f, 0.f, 0.f, VRP.x,
-	                  0.f, 1.f, 0.f, VRP.y,
-	                  0.f, 0.f, 1.f, VRP.z,
-	                  0.f, 0.f, 0.f, 1.f);
-
-	//4x4 Matrix Multiplication
-	return T_inv * R_inv;
-}
-
 Vector3 Camera::getForward() const
 {
 	Quat q = orientation.conjugate();
@@ -127,11 +85,37 @@ Vector3 Camera::getUp() const
 	return result;
 }
 
+void Camera::moveForward(float distance)
+{
+	this->position += this->getForward() * distance;
+	this->calculateOrientation();
+}
+
+void Camera::moveUp(float distance)
+{
+	this->position += this->getUp() * distance;
+	this->calculateOrientation();
+}
+
+void Camera::moveRight(float distance)
+{
+	this->position += this->getRight() * distance;
+	this->calculateOrientation();
+}
+
+void Camera::lookAt(const Vector3& target)
+{
+	normal = target - position;
+	normal.normalize();
+	this->pitch = -asin(this->normal.y);
+	this->heading = -(atan2(normal.x, normal.z));
+	this->calculateOrientation();
+}
+
 void Camera::processMouseMovement(int x_offset, int y_offset, bool constrain_pitch)
 
 {
 	if (x_offset == 0 && y_offset == 0) return;
-
 
 	this->heading += x_offset * SENSITIVITY;
 	if (this->heading > 2 * M_PI) this->heading -= 2 * M_PI;
@@ -147,8 +131,6 @@ void Camera::processMouseMovement(int x_offset, int y_offset, bool constrain_pit
 		if (this->pitch < -M_PI / 2) this->pitch = -M_PI / 2;
 	}
 
-	//cout << heading << "  " << pitch << endl;
-
 	calculateOrientation();
 }
 
@@ -158,9 +140,7 @@ void Camera::calculateOrientation()
 	Quat heading_quat = Quat::fromAxisAngle(this->world_up, this->heading);
 
 	this->orientation.indentity();
-
 	this->orientation = this->orientation * pitch_quat;
-
 	this->orientation = this->orientation * heading_quat;
 
 	Vector3 forward = w = getForward();
@@ -172,8 +152,6 @@ void Camera::calculateOrientation()
 		- half_width * focus_dist * right
 		- half_height * focus_dist * actual_up
 		- focus_dist * forward;
-
-cout<< right <<endl;
 
 	screen_horizontal = right * 2 * focus_dist * half_width;
 	screen_vertical = actual_up * 2 * focus_dist * half_height;
