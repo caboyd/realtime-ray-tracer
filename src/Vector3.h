@@ -43,7 +43,7 @@ public:
 	void clamp(float min, float max);
 	void clampMax(float max);
 	void clampMin(float min);
-	void mix(const Vector3& other, double blend);
+	void mix(const Vector3& other, float blend);
 
 	//Getters
 	bool isZero() const;

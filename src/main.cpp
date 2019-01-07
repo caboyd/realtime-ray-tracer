@@ -1,3 +1,17 @@
+/**
+ *
+ *	Author: Chris Boyd
+ *	Date: Dec 11, 2018
+ *	
+ *	Description: Realtime CPU ray tracer. Uses SDL2 for windowing.
+ *		Each frame adds 1 additional samples. Image will converge overtime 
+ *		to look more correct.
+ *		
+ *		Camera can be moved using W,A,S,D and space. R resets camera.
+ *		Click and drag to look around.
+ */
+
+
 #include <iostream>
 #include "SDL2/SDL.h"
 #include "Random.h"
@@ -30,8 +44,6 @@ const float vFOV = 40;
 
 int main(int argc, char** argv)
 {
-	Random::init();
-
 	SDL_Init(SDL_INIT_EVERYTHING);
 	SDL_Window* window = SDL_CreateWindow("RealTime Ray-tracer", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
 	                                      SCREEN_WIDTH,
@@ -61,7 +73,7 @@ int main(int argc, char** argv)
 
 	//number of samples completed
 	int samples = 0;
-
+	unsigned long int seed = 1;
 	//Render loop
 	bool quit = false;
 	while (!quit)
@@ -70,18 +82,21 @@ int main(int argc, char** argv)
 		const double blend_factor = 1.0 / double(samples + 1);
 
 		//Parallelize the loop for each row of pixels
+		seed = Random::rand31pm_next(&seed);
+
 #pragma omp parallel for
 		for (int y = 0; y < SCREEN_HEIGHT; y++)
 		{
 			//Thread safe random generator
-			thread_local std::mt19937 gen(std::random_device{}());
+			//thread_local std::mt19937 gen(std::random_device{}());
+			thread_local long unsigned int seedp = seed;
 			for (int x = 0; x < SCREEN_WIDTH; x++)
 			{
 				const float fx = float(x), fy = float(y);
 
 				//Jiggle the pixel
-				float u = Random::randf(gen, fx, fx + 1);
-				float v = Random::randf(gen, fy, fy + 1);
+				float u = Random::randf( fx, fx + 1);
+				float v = Random::randf( fy, fy + 1);
 
 				//Get the pixel in 0 to 1 space
 				u = u / float(SCREEN_WIDTH);
@@ -94,7 +109,7 @@ int main(int argc, char** argv)
 
 				//Color is stored in high dynamic range
 				//Blend the new color with the old color using blend factor
-				float_pixels[(SCREEN_HEIGHT - y - 1) * SCREEN_WIDTH + x].mix(color, blend_factor);
+				float_pixels[(SCREEN_HEIGHT - y - 1) * SCREEN_WIDTH + x].mix(color, float(blend_factor));
 
 				//HDR + Gamma Correction Magic
 				//https://www.slideshare.net/ozlael/hable-john-uncharted2-hdr-lighting  slide 140
@@ -109,6 +124,7 @@ int main(int argc, char** argv)
 		}
 		samples++;
 		cout << "Sample " << samples << endl;
+		cout << "time: " << time.getAndReset();
 
 		//Ouput to screen
 		SDL_UpdateTexture(texture, NULL, pixels, sizeof(Uint32) * SCREEN_WIDTH);
@@ -118,7 +134,7 @@ int main(int argc, char** argv)
 
 		//Input/Event Update -------------------
 		int last_x = mouse_x, last_y = mouse_y;
-		float delta_time = time.getAndReset() / 2.f;
+		float delta_time = float(time.getAndReset() / 2.0);
 		bool moved = false;
 
 		SDL_Event event;
@@ -245,15 +261,15 @@ Vector3 ray_trace(const Ray& ray, Hitable* world, int depth)
 void setupCornellWalls(Hitable** list, int& i)
 {
 	//left walls
-	list[i++] = new FlipNormals(new YZRect(0, 555, 0, 555, 555, red_gloss));
+	list[i++] = new YZRect(0, 555, 0, 555, 555, red_gloss, true);
 	//right
 	list[i++] = new YZRect(0, 555, 0, 555, 0, green_gloss);
 	//ceiling
-	list[i++] = new FlipNormals(new XZRect(0, 555, 0, 555, 555, white_matte));
+	list[i++] = new XZRect(0, 555, 0, 555, 555, white_matte, true);
 	//floor
 	list[i++] = new XZRect(0, 555, 0, 555, 0, white_matte);
 	//back
-	list[i++] = new FlipNormals(new XYRect(0, 555, 0, 555, 555, white_gloss));
+	list[i++] = new XYRect(0, 555, 0, 555, 555, white_gloss, true);
 	//front
 	list[i++] = new XYRect(0, 555, 0, 555, 0, white_gloss);
 }
@@ -265,7 +281,7 @@ Hitable* cornell_box()
 
 
 	Material* metal = new Metal(white_color, 0.0f);
-	Material* dialectric = new Dialectric(white_color, 2.54);
+	Material* dialectric = new Dialectric(white_color, 2.54f);
 
 	Hitable** list = new Hitable*[11];
 	int i = 0;

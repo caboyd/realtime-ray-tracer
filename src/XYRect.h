@@ -7,20 +7,27 @@ class XYRect : public Hitable
 {
 	float x0, x1, y0, y1, k;
 	Material* mp;
+	bool flip_normals;
 public:
 	XYRect()
 	{
 	};
 
-	XYRect(float _x0, float _x1, float _y0, float _y1, float _k, Material* mat) : x0(_x0),
-	                                                                              x1(_x1), y0(_y0), y1(_y1), k(_k),
-	                                                                              mp(mat)
+	XYRect(float _x0, float _x1, float _y0, float _y1, float _k, Material* mat, bool flip_normals = false) : x0(_x0),
+	                                                                                                         x1(_x1),
+	                                                                                                         y0(_y0),
+	                                                                                                         y1(_y1),
+	                                                                                                         k(_k),
+	                                                                                                         mp(mat),
+	                                                                                                         flip_normals(
+		                                                                                                         flip_normals)
 	{
 	};
 
 
-	bool hit(const Ray& ray, float t_min, float t_max, HitRecord& hit_record) const override
+	bool hit(const Ray& r, float t_min, float t_max, HitRecord& hit_record) const override
 	{
+		Ray ray = r;
 		float t = (k - ray.origin.z) / ray.direction.z;
 
 		if (t < t_min || t > t_max)
@@ -32,12 +39,14 @@ public:
 		if (x < x0 || x > x1 || y < y0 || y > y1)
 			return false;
 
-		hit_record.u = (x - x0) / (x1 - x0);
-		hit_record.v = (y - y0) / (y1 - y0);
-		hit_record.t = t;
-		hit_record.mat_ptr = mp;
-		hit_record.position = ray.point_at_parameter(t);
-		hit_record.normal = Vector3::UNIT_Z_POS;
+		HitRecord temp_rec;
+		temp_rec.u = (x - x0) / (x1 - x0);
+		temp_rec.v = (y - y0) / (y1 - y0);
+		temp_rec.t = t;
+		temp_rec.mat_ptr = mp;
+		temp_rec.position = ray.point_at_parameter(t);
+		temp_rec.normal = flip_normals ? Vector3::UNIT_Z_NEG : Vector3::UNIT_Z_POS;
+		hit_record = temp_rec;
 		return true;
 	}
 
@@ -52,14 +61,20 @@ class XZRect : public Hitable
 {
 	float x0, x1, z0, z1, k;
 	Material* mp;
+	bool flip_normals;
 public:
 	XZRect()
 	{
 	};
 
-	XZRect(float _x0, float _x1, float _z0, float _z1, float _k, Material* mat) : x0(_x0),
-	                                                                              x1(_x1), z0(_z0), z1(_z1), k(_k),
-	                                                                              mp(mat)
+	XZRect(float _x0, float _x1, float _z0, float _z1, float _k, Material* mat, bool flip_normals = false) : x0(_x0),
+	                                                                                                         x1(_x1),
+	                                                                                                         z0(_z0),
+	                                                                                                         z1(_z1),
+	                                                                                                         k(_k),
+	                                                                                                         mp(mat),
+	                                                                                                         flip_normals(
+		                                                                                                         flip_normals)
 	{
 	};
 
@@ -70,8 +85,10 @@ public:
 		return true;
 	}
 
-	bool hit(const Ray& ray, float t_min, float t_max, HitRecord& hit_record) const override
+	bool hit(const Ray& r, float t_min, float t_max, HitRecord& hit_record) const override
 	{
+		Ray ray = r;
+		HitRecord temp_rec;
 		float t = (k - ray.origin.y) / ray.direction.y;
 
 		if (t < t_min || t > t_max)
@@ -83,12 +100,15 @@ public:
 		if (x < x0 || x > x1 || z < z0 || z > z1)
 			return false;
 
-		hit_record.u = (x - x0) / (x1 - x0);
-		hit_record.v = (z - z0) / (z1 - z0);
-		hit_record.t = t;
-		hit_record.mat_ptr = mp;
-		hit_record.position = ray.point_at_parameter(t);
-		hit_record.normal = Vector3::UNIT_Y_POS;
+
+		temp_rec.u = (x - x0) / (x1 - x0);
+		temp_rec.v = (z - z0) / (z1 - z0);
+		temp_rec.t = t;
+		temp_rec.mat_ptr = mp;
+		temp_rec.position = ray.point_at_parameter(t);
+		temp_rec.normal = flip_normals ? Vector3::UNIT_Y_NEG : Vector3::UNIT_Y_POS;
+
+		hit_record = temp_rec;
 		return true;
 	}
 };
@@ -98,14 +118,20 @@ class YZRect : public Hitable
 {
 	float y0, y1, z0, z1, k;
 	Material* mp;
+	bool flip_normals;
 public:
 	YZRect()
 	{
 	};
 
-	YZRect(float _y0, float _y1, float _z0, float _z1, float _k, Material* mat) : y0(_y0),
-	                                                                              y1(_y1), z0(_z0), z1(_z1), k(_k),
-	                                                                              mp(mat)
+	YZRect(float _y0, float _y1, float _z0, float _z1, float _k, Material* mat, bool flip_normals = false) : y0(_y0),
+	                                                                                                         y1(_y1),
+	                                                                                                         z0(_z0),
+	                                                                                                         z1(_z1),
+	                                                                                                         k(_k),
+	                                                                                                         mp(mat),
+	                                                                                                         flip_normals(
+		                                                                                                         flip_normals)
 	{
 	};
 
@@ -116,8 +142,9 @@ public:
 		return true;
 	}
 
-	bool hit(const Ray& ray, float t_min, float t_max, HitRecord& hit_record) const override
+	bool hit(const Ray& r, float t_min, float t_max, HitRecord& hit_record) const override
 	{
+		Ray ray = r;
 		float t = (k - ray.origin.x) / ray.direction.x;
 
 		if (t < t_min || t > t_max)
@@ -129,14 +156,14 @@ public:
 		if (y < y0 || y > y1 || z < z0 || z > z1)
 			return false;
 
-		hit_record.u = (y - y0) / (y1 - y0);
-		hit_record.v = (z - z0) / (z1 - z0);
-		hit_record.t = t;
-		hit_record.mat_ptr = mp;
-		hit_record.position = ray.point_at_parameter(t);
-		hit_record.normal = Vector3::UNIT_X_POS;
+		HitRecord temp_rec;
+		temp_rec.u = (y - y0) / (y1 - y0);
+		temp_rec.v = (z - z0) / (z1 - z0);
+		temp_rec.t = t;
+		temp_rec.mat_ptr = mp;
+		temp_rec.position = ray.point_at_parameter(t);
+		temp_rec.normal = flip_normals ? Vector3::UNIT_X_NEG : Vector3::UNIT_X_POS;
+		hit_record = temp_rec;
 		return true;
 	}
 };
-
-

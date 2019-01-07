@@ -4,11 +4,11 @@
 #include "BlinnPhong.h"
 #include "Metal.h"
 
-const int SCREEN_WIDTH = 800;
-const int SCREEN_HEIGHT = 450;
+const int SCREEN_WIDTH = 400;
+const int SCREEN_HEIGHT = 250;
 const float ASPECT_RATIO = float(SCREEN_WIDTH) / float(SCREEN_HEIGHT);
 
-const int MAX_RAY_DEPTH = 200;
+const int MAX_RAY_DEPTH = 32;
 
 int mouse_x = 0;
 int mouse_y = 0;

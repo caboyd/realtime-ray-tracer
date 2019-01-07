@@ -26,6 +26,7 @@ public:
 bool HitableList::hit(const Ray& ray, float t_min, float t_max, HitRecord& hit_record) const
 {
 	HitRecord temp_rec;
+	HitRecord saved_temp_rec;
 
 	bool hit_anything = false;
 	float closest_so_far = t_max;
@@ -36,9 +37,10 @@ bool HitableList::hit(const Ray& ray, float t_min, float t_max, HitRecord& hit_r
 		{
 			hit_anything = true;
 			closest_so_far = temp_rec.t;
-			hit_record = temp_rec;
+			saved_temp_rec = temp_rec;
 		}
 	}
+	hit_record = saved_temp_rec;
 	return hit_anything;
 }
 

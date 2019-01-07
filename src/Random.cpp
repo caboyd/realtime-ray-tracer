@@ -2,77 +2,90 @@
 #include "Random.h"
 #include "Vector3.h"
 
-Random::Random()
+#define constapm 16807
+#define constmpm 2147483647.0
+
+void Random::seed(long unsigned int seed)
 {
-	gen.seed(rd());
+	g_seed = seed;
 }
 
-void Random::init()
+
+unsigned long Random::rand31pm_next(unsigned long* seedp)
 {
-	gen.seed(rd());
+	double const a = constapm;
+	double const m = constmpm;
+	/* This is the linear congrentual 
+	 * generator:
+	 *  
+	 * Multiply the old seed by constant a 
+	 * and take the modulus of the result 
+	 * (the remainder of a division) by 
+	 * constant m.
+	 */
+
+	return (*seedp = long(fmod((*seedp * a), m)));
+}
+
+unsigned long Random::rand31pm_next()
+{
+	return rand31pm_next(&g_seed);
 }
 
 int Random::randi(int max)
 {
-	return randi(gen, max);
+	return randi(&g_seed, max);
 }
 
-int Random::randi(std::mt19937& gen, int max)
+int Random::randi(unsigned long* seedp, int max)
 {
-	const std::uniform_int_distribution<int> distribution(0, max);
-	const int result = distribution(gen);
-	return result;
+	return (rand31pm_next(seedp) % max);
 }
+
 
 unsigned int Random::randu(unsigned max)
 {
-	return randu(gen, max);
+	return randu(&g_seed, max);
 }
 
-unsigned Random::randu(std::mt19937& gen, unsigned max)
+unsigned Random::randu(unsigned long* seedp, unsigned max)
 {
-	const std::uniform_int_distribution<unsigned> distribution(0, max);
-	const unsigned int result = distribution(gen);
-	return result;
+	return (rand31pm_next(seedp) % max);
 }
 
 
 double Random::randd(const double min, const double max)
 {
-	return randd(gen, min, max);
+	return randd(&g_seed, min, max);
 }
 
-double Random::randd(std::mt19937& gen, double min, double max)
+double Random::randd(unsigned long* seedp, double min, double max)
 {
-	const std::uniform_real_distribution<double> distribution(min, max);
-	const double result = distribution(gen);
-	return result;
+	return min + (rand31pm_next(seedp) / (2147483647.0/(max - min)) );
 }
 
 
 float Random::randf(const float min, const float max)
 {
-	return randf(gen, min, max);
+	return randf(&g_seed, min, max);
 }
 
-float Random::randf(std::mt19937& gen, float min, float max)
+float Random::randf(unsigned long* seedp, float min, float max)
 {
-	const std::uniform_real_distribution<float> distribution(min, max);
-	const float result = distribution(gen);
-	return result;
+	return float(min + (rand31pm_next(seedp) / (2147483647.0/(max - min))));
 }
 
 Vector3 Random::random_in_unit_sphere()
 {
-	return random_in_unit_sphere(gen);
+	return random_in_unit_sphere(&g_seed);
 }
 
-Vector3 Random::random_in_unit_sphere(std::mt19937& gen)
+Vector3 Random::random_in_unit_sphere(unsigned long* seedp)
 {
 	Vector3 p;
 	do
 	{
-		p.set(Random::randf(gen, -1, 1), Random::randf(gen, -1, 1), Random::randf(gen, -1, 1));
+		p.set(randf(seedp, -1, 1), randf(seedp, -1, 1), randf(seedp, -1, 1));
 	}
 	while (p.getSquaredLength() >= 1.0);
 	return p;
@@ -80,19 +93,19 @@ Vector3 Random::random_in_unit_sphere(std::mt19937& gen)
 
 Vector3 Random::random_in_unit_disk()
 {
-	return random_in_unit_disk(gen);
+	return random_in_unit_disk(&g_seed);
 }
 
-Vector3 Random::random_in_unit_disk(std::mt19937& gen)
+Vector3 Random::random_in_unit_disk(unsigned long* seedp)
 {
 	Vector3 p;
 	do
 	{
-		p.set(Random::randf(gen, -1, 1), Random::randf(gen, -1, 1), 0);
+		p.set(randf(seedp, -1, 1), randf(seedp, -1, 1), 0);
 	}
 	while (p.getSquaredLength() >= 1.0);
 	return p;
 }
 
-std::random_device Random::rd;
-std::mt19937 Random::gen;
+
+long unsigned int Random::g_seed = 1;

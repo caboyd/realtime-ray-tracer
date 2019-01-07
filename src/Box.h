@@ -132,10 +132,12 @@ public:
 void Box::updateHitRecord(const Vector3& position, int u, int v, const Vector3& normal, float t, Material* mat_ptr,
                           HitRecord& rec) const
 {
-	rec.position = position;
-	rec.normal = normal;
-	rec.t = t;
-	rec.mat_ptr = mat_ptr;
-	rec.u = ((position[u] - center[u]) / dimensions[u] + 1.0f) * 0.5f;
-	rec.v = ((position[v] - center[v]) / dimensions[v] + 1.0f) * 0.5f;
+	HitRecord temp;
+	temp.position = position;
+	temp.normal = normal;
+	temp.t = t;
+	temp.mat_ptr = mat_ptr;
+	temp.u = ((position[u] - center[u]) / dimensions[u] + 1.0f) * 0.5f;
+	temp.v = ((position[v] - center[v]) / dimensions[v] + 1.0f) * 0.5f;
+	rec = temp;
 }
